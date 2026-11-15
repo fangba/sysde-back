@@ -1,0 +1,19 @@
+# Base de développement : PostgreSQL 18 + PostGIS. À lancer avec `docker compose -f docker/compose.yml up -d`.
+services:
+  db:
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_DB: sysde
+      POSTGRES_USER: sysde
+      POSTGRES_PASSWORD: sysde
+    ports:
+      - "5433:5432"
+    volumes:
+      - sysde-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sysde -d sysde"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  sysde-db:

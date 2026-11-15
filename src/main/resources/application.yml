@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: sysde-back
+  datasource:
+    # En production : le rôle applicatif (sysde_app, droits minimaux) ; Flyway utilise le propriétaire.
+    url: ${SYSDE_DB_URL:jdbc:postgresql://localhost:5433/sysde}
+    username: ${SYSDE_DB_USER:sysde}
+    password: ${SYSDE_DB_PASSWORD:sysde}
+  flyway:
+    url: ${SYSDE_FLYWAY_URL:${SYSDE_DB_URL:jdbc:postgresql://localhost:5433/sysde}}
+    user: ${SYSDE_FLYWAY_USER:${SYSDE_DB_USER:sysde}}
+    password: ${SYSDE_FLYWAY_PASSWORD:${SYSDE_DB_PASSWORD:sysde}}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Flyway seul maître du schéma
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+  jackson:
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 25MB         # contours (shapefile zippé, GeoJSON) ; un import CSV de 5 000 lignes tient largement
+      max-request-size: 26MB
+
+server:
+  forward-headers-strategy: framework   # adresse IP réelle derrière le proxy
+  error:
+    include-message: never
+    include-stacktrace: never
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+sysde:
+  stockage:
+    repertoire: ${SYSDE_STOCKAGE_REPERTOIRE:./data/fichiers}   # fichiers importés (contours) ; MinIO remplacera ce répertoire
+  jwt:
+    # Au moins 32 caractères. À fournir par l'environnement en production.
+    secret: ${SYSDE_JWT_SECRET:dev-only-secret-change-me-dev-only-secret-change-me}
+    issuer: sysde
+    # Durée de vie du jeton d'accès. EXI-05 vise 15 min (PT15M) : à activer quand web et mobile appellent /auth/refresh.
+    duree: ${SYSDE_JWT_DUREE:PT8H}
+  securite:
+    # Limite de débit par adresse IP sur /auth/login et /auth/refresh (mémoire de l'instance).
+    debit:
+      max: ${SYSDE_DEBIT_MAX:30}
+      fenetre: PT1M
+    connexion:
+      echecs-max: 5
+      verrouillage: PT15M
+  cors:
+    origines: ${SYSDE_CORS_ORIGINES:http://localhost:4200}
