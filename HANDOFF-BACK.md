@@ -45,7 +45,7 @@ Règle permanente : quand une route ou une règle change, mets à jour `docs/end
 7. Reporting (3 niveaux), dashboard, carte (`/carte/*`, GeoJSON), notifications.
 
 ## Plantations (base externe) — décision du 14/11/2026
-**Implémenté le 15/11/2026** (`ci.sysde.plantation`, voir `endpoints-back.md` §6 et §7) avec un contrat externe provisoire ; **le simulateur `sysde-plantations-sim` n'est pas fait** (tests : source en mémoire + serveur HTTP local). Reste : contrat réel du tiers, cache et coupe-circuit, vérification des `plantationRef` du planning.
+**Implémenté le 15/11/2026** (`ci.sysde.plantation`, voir `endpoints-back.md` §6 et §7) avec un contrat externe provisoire ; **le simulateur `sysde-plantations-sim` n'est pas fait** (tests : source en mémoire + serveur HTTP local). Reste : contrat réel du tiers, cache et coupe-circuit, activer la vérification des `plantationRef` du planning (`sysde.plantations.verification-planning`, faite mais désactivée par défaut).
 Les plantations et planteurs viennent d'une **base externe** via l'API d'un tiers (lecture seule). Pour les tests, on construit un **simulateur séparé** avec sa propre base.
 - Le back ne dépend que d'une interface `SourcePlantations`. Un seul adaptateur HTTP (RestClient, délais d'attente, reprises, coupe-circuit, cache court) parle à l'API ; le reste du code n'en sait rien.
 - `sysde-plantations-sim` : petit Spring Boot **à côté** de `sysde-back` (dossier frère), sa base PostgreSQL dans `docker/compose.yml` (autre port que 5433, p. ex. 5434), données de test cohérentes avec les 18 secteurs et 55 lots de V9, superficies aux seuils (24,9 ; 25 ; 49,9 ; 50 ; 120 ha).

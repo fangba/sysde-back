@@ -21,6 +21,7 @@ import ci.sysde.planning.PlanningDtos.PlanLine;
 import ci.sysde.planning.PlanningDtos.PlanLineInput;
 import ci.sysde.planning.PlanningDtos.Rejection;
 import ci.sysde.planning.PlanningDtos.Submission;
+import ci.sysde.plantation.PlantationsDuPlanning;
 import ci.sysde.security.Acteur;
 import ci.sysde.security.Perimetre;
 import ci.sysde.security.PerimetreService;
@@ -54,8 +55,11 @@ public class PlanningService {
     private final JdbcClient jdbc;
     private final PerimetreService perimetres;
     private final NotificationService notifications;
+    private final PlantationsDuPlanning plantations;
 
-    PlanningService(JdbcClient jdbc, PerimetreService perimetres, NotificationService notifications) {
+    PlanningService(JdbcClient jdbc, PerimetreService perimetres, NotificationService notifications,
+                    PlantationsDuPlanning plantations) {
+        this.plantations = plantations;
         this.jdbc = jdbc;
         this.perimetres = perimetres;
         this.notifications = notifications;
@@ -431,6 +435,9 @@ public class PlanningService {
                 throw invalide(ou + "ce groupe n'appartient pas à ce lot.");
             }
         }
+        // Plantations visitées : elles doivent exister dans la base externe et se trouver dans le lot de la ligne.
+        plantations.verifier(lignes.stream().filter(l -> l.plantationRef() != null && !l.plantationRef().isBlank())
+                .map(l -> new PlantationsDuPlanning.Citation(l.plantationRef().strip(), l.lotId())).toList());
     }
 
     /** Le profil de l'appelant a-t-il un planning d'activité ? */
