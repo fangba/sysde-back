@@ -58,5 +58,7 @@ sysde:
     connexion:
       echecs-max: 5
       verrouillage: PT15M
+  # Base externe des plantations (contrat provisoire) : SYSDE_PLANTATIONS_URL et SYSDE_PLANTATIONS_CLE (environnement).
+  # Sans URL, /plantations et /carte/plantations répondent 503.
   cors:
     origines: ${SYSDE_CORS_ORIGINES:http://localhost:4200}
