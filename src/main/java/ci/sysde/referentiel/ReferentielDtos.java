@@ -117,4 +117,16 @@ public final class ReferentielDtos {
             @Size(max = 80) String delegate,
             @NotNull UUID monitorId) {
     }
+
+    /** Membre d'un groupe de vulgarisation : une personne (participant) et sa période d'appartenance ({@code until} nul : toujours membre). */
+    public record GroupMember(ci.sysde.realisation.RealisationDtos.Participant participant, java.time.LocalDate since, java.time.LocalDate until) {
+    }
+
+    /** {@code since} : date d'entrée dans le groupe (aujourd'hui par défaut ; pas dans le futur). */
+    public record GroupMemberInput(@jakarta.validation.constraints.NotNull java.util.UUID participantId, java.time.LocalDate since) {
+    }
+
+    /** Liste complète des membres actuels : les absents de la liste quittent le groupe, les nouveaux y entrent. */
+    public record GroupMembersInput(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Size(max = 1000) java.util.List<java.util.UUID> participantIds) {
+    }
 }
