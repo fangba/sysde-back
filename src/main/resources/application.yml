@@ -60,6 +60,7 @@ sysde:
       verrouillage: PT15M
   # Base externe des plantations (contrat provisoire) : SYSDE_PLANTATIONS_URL et SYSDE_PLANTATIONS_CLE (environnement).
   # Sans URL, /plantations et /carte/plantations répondent 503.
+  # Cache (cache: PT60S), tolérance si la source tombe (cache-perime: PT10M), coupe-circuit (coupe-circuit.echecs: 5, .pause: PT30S).
   # sysde.plantations.verification-planning=true : les plantations des visites du planning sont vérifiées (désactivé par défaut).
   cors:
     origines: ${SYSDE_CORS_ORIGINES:http://localhost:4200}
