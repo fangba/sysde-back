@@ -25,6 +25,7 @@ import ci.sysde.realisation.RealisationDtos.EvaluationInput;
 import ci.sysde.realisation.RealisationDtos.Realisation;
 import ci.sysde.realisation.RealisationDtos.RealisationInput;
 import ci.sysde.realisation.RealisationDtos.RealisationSummary;
+import ci.sysde.plantation.PlantationsDuPlanning;
 import ci.sysde.security.Acteur;
 import ci.sysde.security.Perimetre;
 import ci.sysde.security.PerimetreService;
@@ -46,17 +47,21 @@ public class RealisationService {
     private record LignePlan(UUID id, UUID planId, UUID compteId, UUID activiteId, LocalDate debut, LocalDate fin) {
     }
 
-    private record Existante(UUID id, UUID ligneId, UUID compteId, String statut, long version, String empreinte) {
+    /** Ce que la réalisation réalise : une ligne de planning, ou (ligne nulle) une activité spontanée datée du jour de son début. */
+    private record Cible(UUID ligneId, UUID activiteId, LocalDate debut, LocalDate fin) {
+    }
+
+    private record Existante(UUID id, UUID ligneId, UUID activiteId, UUID compteId, String statut, long version, String empreinte) {
     }
 
     private record Activite(boolean avecPresence, boolean avecEvaluation, boolean avecRapport, Integer participantsMax) {
     }
 
     private static final String COLONNES = """
-            select r.id, r.ligne_id, l.plan_id, r.compte_id, l.activite_id, r.statut, r.debut_le, r.fin_le, r.latitude, r.longitude,
-                   r.precision_m, r.observations, r.recu_le, r.version
+            select r.id, r.ligne_id, l.plan_id, r.compte_id, r.activite_id, r.plantation_ref, r.statut, r.debut_le, r.fin_le, r.latitude,
+                   r.longitude, r.precision_m, r.observations, r.recu_le, r.version
               from planning.realisation r
-              join planning.ligne_planning l on l.id = r.ligne_id
+              left join planning.ligne_planning l on l.id = r.ligne_id
               join iam.compte c on c.id = r.compte_id
               join referentiel.operateur o on o.id = c.operateur_id
              where r.supprime_le is null""";
@@ -64,8 +69,10 @@ public class RealisationService {
     private final JdbcClient jdbc;
     private final PerimetreService perimetres;
     private final ObjectMapper json;
+    private final PlantationsDuPlanning plantations;
 
-    RealisationService(JdbcClient jdbc, PerimetreService perimetres, ObjectMapper json) {
+    RealisationService(JdbcClient jdbc, PerimetreService perimetres, ObjectMapper json, PlantationsDuPlanning plantations) {
+        this.plantations = plantations;
         this.jdbc = jdbc;
         this.perimetres = perimetres;
         this.json = json;
@@ -83,33 +90,24 @@ public class RealisationService {
 
     @Transactional
     Realisation enregistrer(Acteur acteur, UUID id, RealisationInput in) {
-        LignePlan ligne = jdbc.sql("""
-                        select l.id, l.plan_id, p.compte_id, l.activite_id, l.date_debut, l.date_fin
-                          from planning.ligne_planning l join planning.plan_annuel p on p.id = l.plan_id
-                         where l.id = :id and l.supprime_le is null and p.supprime_le is null
-                        """)
-                .param("id", in.lineId())
-                .query((rs, n) -> new LignePlan(rs.getObject("id", UUID.class), rs.getObject("plan_id", UUID.class),
-                        rs.getObject("compte_id", UUID.class), rs.getObject("activite_id", UUID.class),
-                        rs.getObject("date_debut", LocalDate.class), rs.getObject("date_fin", LocalDate.class)))
-                .optional().orElseThrow(() -> invalide("Ligne de planning inconnue."));
-        if (!ligne.compteId().equals(acteur.compteId())) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "ACCES_REFUSE", "Cette ligne n'est pas dans votre planning.");
-        }
+        Cible cible = cible(acteur, in);
 
         String empreinte = empreinte(in);
-        Existante existante = jdbc.sql("select id, ligne_id, compte_id, statut, version, empreinte from planning.realisation where id = :id and supprime_le is null for update")
+        Existante existante = jdbc.sql("select id, ligne_id, activite_id, compte_id, statut, version, empreinte from planning.realisation where id = :id and supprime_le is null for update")
                 .param("id", id)
                 .query((rs, n) -> new Existante(rs.getObject("id", UUID.class), rs.getObject("ligne_id", UUID.class),
-                        rs.getObject("compte_id", UUID.class), rs.getString("statut"), rs.getLong("version"),
+                        rs.getObject("activite_id", UUID.class), rs.getObject("compte_id", UUID.class), rs.getString("statut"), rs.getLong("version"),
                         rs.getString("empreinte") == null ? null : rs.getString("empreinte").strip()))
                 .optional().orElse(null);
         if (existante != null) {
             if (!existante.compteId().equals(acteur.compteId())) {
                 throw new BusinessException(HttpStatus.FORBIDDEN, "ACCES_REFUSE", "Cette réalisation est celle d'un autre compte.");
             }
-            if (!existante.ligneId().equals(in.lineId())) {
+            if (!java.util.Objects.equals(existante.ligneId(), cible.ligneId())) {
                 throw conflit("Cette réalisation concerne une autre ligne de planning.");
+            }
+            if (!existante.activiteId().equals(cible.activiteId())) {
+                throw conflit("Cette réalisation concerne une autre activité.");
             }
             if (empreinte.equals(existante.empreinte())) {
                 return lire(id);                                   // rejeu d'un envoi déjà reçu : rien à refaire
@@ -121,29 +119,32 @@ public class RealisationService {
             if ("TERMINEE".equals(existante.statut()) && "EN_COURS".equals(in.status())) {
                 throw conflit("Une réalisation terminée ne repasse pas en cours.");
             }
-        } else if (jdbc.sql("select exists (select 1 from planning.realisation where ligne_id = :l and supprime_le is null)")
-                .param("l", in.lineId()).query(Boolean.class).single()) {
+        } else if (cible.ligneId() != null && jdbc.sql("select exists (select 1 from planning.realisation where ligne_id = :l and supprime_le is null)")
+                .param("l", cible.ligneId()).query(Boolean.class).single()) {
             throw conflit("Cette ligne de planning a déjà une réalisation.");
         }
-        verifier(acteur, ligne, in);
+        verifier(acteur, cible, in);
 
         if (existante == null) {
             jdbc.sql("""
-                            insert into planning.realisation (id, ligne_id, compte_id, statut, debut_le, fin_le, latitude, longitude, precision_m, observations, empreinte)
-                            values (:id, :ligne, :compte, :statut, :debut, :fin, :lat, :lon, :precision, :obs, :empreinte)
+                            insert into planning.realisation (id, ligne_id, activite_id, plantation_ref, compte_id, statut, debut_le, fin_le, latitude,
+                                                              longitude, precision_m, observations, empreinte)
+                            values (:id, :ligne, :activite, :plantation, :compte, :statut, :debut, :fin, :lat, :lon, :precision, :obs, :empreinte)
                             """)
-                    .param("id", id).param("ligne", in.lineId()).param("compte", acteur.compteId()).param("statut", in.status())
+                    .param("id", id).param("ligne", cible.ligneId()).param("activite", cible.activiteId())
+                    .param("plantation", cible.ligneId() == null ? in.plantationRef().strip() : null).param("compte", acteur.compteId()).param("statut", in.status())
                     .param("debut", in.startedAt()).param("fin", in.endedAt()).param("lat", in.latitude()).param("lon", in.longitude())
                     .param("precision", in.accuracyM()).param("obs", in.observations() == null ? "" : in.observations())
                     .param("empreinte", empreinte).update();
         } else {
             jdbc.sql("""
                             update planning.realisation
-                               set statut = :statut, debut_le = :debut, fin_le = :fin, latitude = :lat, longitude = :lon, precision_m = :precision,
+                               set plantation_ref = :plantation, statut = :statut, debut_le = :debut, fin_le = :fin, latitude = :lat, longitude = :lon, precision_m = :precision,
                                    observations = :obs, empreinte = :empreinte, version = version + 1, recu_le = now()
                              where id = :id
                             """)
-                    .param("id", id).param("statut", in.status()).param("debut", in.startedAt()).param("fin", in.endedAt())
+                    .param("id", id).param("plantation", cible.ligneId() == null ? in.plantationRef().strip() : null)
+                    .param("statut", in.status()).param("debut", in.startedAt()).param("fin", in.endedAt())
                     .param("lat", in.latitude()).param("lon", in.longitude()).param("precision", in.accuracyM())
                     .param("obs", in.observations() == null ? "" : in.observations()).param("empreinte", empreinte).update();
             jdbc.sql("delete from planning.presence where realisation_id = :id").param("id", id).update();
@@ -193,7 +194,7 @@ public class RealisationService {
             params.put("compte", compteId);
         }
         if (activiteId != null) {
-            where.append(" and l.activite_id = :activite");
+            where.append(" and r.activite_id = :activite");
             params.put("activite", activiteId);
         }
         if (statut != null && !statut.isBlank()) {
@@ -213,7 +214,7 @@ public class RealisationService {
         List<RealisationSummary> contenu = jdbc.sql(COLONNES + where + " order by r.debut_le desc, r.id desc limit :limite offset :decalage")
                 .params(params).param("limite", page.size()).param("decalage", page.decalage())
                 .query(RealisationService::ligne).list().stream()
-                .map(r -> new RealisationSummary(r.id(), r.lineId(), r.accountId(), r.activityId(), r.status(), r.startedAt(), r.endedAt(),
+                .map(r -> new RealisationSummary(r.id(), r.lineId(), r.accountId(), r.activityId(), r.plantationRef(), r.status(), r.startedAt(), r.endedAt(),
                         r.receivedAt(), r.version()))
                 .toList();
         return Page.de(contenu, page, total);
@@ -221,7 +222,65 @@ public class RealisationService {
 
     // ------------------------------------------------------------------ contrôles
 
-    private void verifier(Acteur acteur, LignePlan ligne, RealisationInput in) {
+    /**
+     * Ce que l'envoi réalise. Avec {@code lineId} : une ligne du planning de l'appelant. Sans : une activité spontanée, qui doit
+     * être non planifiée, proposée et réalisée par le profil de l'appelant ; elle porte la plantation et la position.
+     */
+    private Cible cible(Acteur acteur, RealisationInput in) {
+        if (in.lineId() != null) {
+            if (in.plantationRef() != null) {
+                throw invalide("La plantation d'une activité planifiée est celle de sa ligne de planning.");
+            }
+            LignePlan ligne = jdbc.sql("""
+                            select l.id, l.plan_id, p.compte_id, l.activite_id, l.date_debut, l.date_fin
+                              from planning.ligne_planning l join planning.plan_annuel p on p.id = l.plan_id
+                             where l.id = :id and l.supprime_le is null and p.supprime_le is null
+                            """)
+                    .param("id", in.lineId())
+                    .query((rs, n) -> new LignePlan(rs.getObject("id", UUID.class), rs.getObject("plan_id", UUID.class),
+                            rs.getObject("compte_id", UUID.class), rs.getObject("activite_id", UUID.class),
+                            rs.getObject("date_debut", LocalDate.class), rs.getObject("date_fin", LocalDate.class)))
+                    .optional().orElseThrow(() -> invalide("Ligne de planning inconnue."));
+            if (!ligne.compteId().equals(acteur.compteId())) {
+                throw new BusinessException(HttpStatus.FORBIDDEN, "ACCES_REFUSE", "Cette ligne n'est pas dans votre planning.");
+            }
+            if (in.activityId() != null && !in.activityId().equals(ligne.activiteId())) {
+                throw invalide("L'activité indiquée n'est pas celle de la ligne de planning.");
+            }
+            return new Cible(ligne.id(), ligne.activiteId(), ligne.debut(), ligne.fin());
+        }
+        if (in.activityId() == null) {
+            throw invalide("Indiquez la ligne de planning ou, pour une activité spontanée, l'activité.");
+        }
+        record Info(String libelle, boolean planifiee, boolean actif) {
+        }
+        Info a = jdbc.sql("select libelle, planifiee, actif from planning.activite where id = :id and supprime_le is null")
+                .param("id", in.activityId())
+                .query((rs, n) -> new Info(rs.getString("libelle"), rs.getBoolean("planifiee"), rs.getBoolean("actif")))
+                .optional().orElseThrow(() -> invalide("Activité inconnue."));
+        if (a.planifiee()) {
+            throw invalide("L'activité « " + a.libelle() + " » se planifie : saisissez-la depuis une ligne de votre planning.");
+        }
+        if (!a.actif()) {
+            throw invalide("L'activité « " + a.libelle() + " » n'est plus proposée.");
+        }
+        boolean realiseeParLeProfil = jdbc.sql("select exists (select 1 from planning.activite_profil where activite_id = :a and profil = :p and supprime_le is null)")
+                .param("a", in.activityId()).param("p", acteur.profil()).query(Boolean.class).single();
+        if (!realiseeParLeProfil) {
+            throw invalide("L'activité « " + a.libelle() + " » n'est pas réalisée par votre profil.");
+        }
+        if (in.plantationRef() == null || in.plantationRef().isBlank()) {
+            throw invalide("La plantation concernée est obligatoire pour une activité spontanée.");
+        }
+        if (in.latitude() == null || in.longitude() == null) {
+            throw invalide("La position est obligatoire pour une activité spontanée.");
+        }
+        plantations.verifier(List.of(new PlantationsDuPlanning.Citation(in.plantationRef().strip(), null)));
+        LocalDate jour = in.startedAt().toLocalDate();
+        return new Cible(null, in.activityId(), jour, jour);
+    }
+
+    private void verifier(Acteur acteur, Cible ligne, RealisationInput in) {
         Activite activite = jdbc.sql("select avec_presence, avec_evaluation, avec_rapport, participants_max from planning.activite where id = :id")
                 .param("id", ligne.activiteId())
                 .query((rs, n) -> new Activite(rs.getBoolean("avec_presence"), rs.getBoolean("avec_evaluation"), rs.getBoolean("avec_rapport"),
@@ -341,14 +400,14 @@ public class RealisationService {
                         rs.getString("commentaire").isEmpty() ? null : rs.getString("commentaire"))).list();
         String rapport = jdbc.sql("select contenu from planning.rapport where realisation_id = :id").param("id", r.id()).query(String.class).optional()
                 .filter(c -> !c.isBlank()).orElse(null);
-        return new Realisation(r.id(), r.lineId(), r.planId(), r.accountId(), r.activityId(), r.status(), r.startedAt(), r.endedAt(),
+        return new Realisation(r.id(), r.lineId(), r.planId(), r.accountId(), r.activityId(), r.plantationRef(), r.status(), r.startedAt(), r.endedAt(),
                 r.latitude(), r.longitude(), r.accuracyM(), r.observations() == null || r.observations().isEmpty() ? null : r.observations(),
                 r.receivedAt(), r.version(), presences, evaluations, appreciations, rapport);
     }
 
     private static Realisation ligne(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
         return new Realisation(rs.getObject("id", UUID.class), rs.getObject("ligne_id", UUID.class), rs.getObject("plan_id", UUID.class),
-                rs.getObject("compte_id", UUID.class), rs.getObject("activite_id", UUID.class), rs.getString("statut"),
+                rs.getObject("compte_id", UUID.class), rs.getObject("activite_id", UUID.class), rs.getString("plantation_ref"), rs.getString("statut"),
                 rs.getObject("debut_le", OffsetDateTime.class), rs.getObject("fin_le", OffsetDateTime.class),
                 rs.getBigDecimal("latitude"), rs.getBigDecimal("longitude"), rs.getBigDecimal("precision_m"), rs.getString("observations"),
                 rs.getObject("recu_le", OffsetDateTime.class), rs.getLong("version"), List.of(), List.of(), List.of(), null);
@@ -356,7 +415,7 @@ public class RealisationService {
 
     /** Empreinte du contenu, sans la version attendue : deux envois identiques ont la même. */
     private String empreinte(RealisationInput in) {
-        RealisationInput sansVersion = new RealisationInput(in.lineId(), in.status(), in.startedAt(), in.endedAt(), in.latitude(), in.longitude(),
+        RealisationInput sansVersion = new RealisationInput(in.lineId(), in.activityId(), in.plantationRef(), in.status(), in.startedAt(), in.endedAt(), in.latitude(), in.longitude(),
                 in.accuracyM(), in.observations(), liste(in.attendance()), liste(in.evaluations()), liste(in.appreciations()), in.report(), null);
         try {
             return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")

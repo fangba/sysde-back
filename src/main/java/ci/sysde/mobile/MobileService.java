@@ -57,9 +57,10 @@ class MobileService {
             etats = jdbc.sql("""
                             select r.id, r.ligne_id, r.statut, r.version
                               from planning.realisation r
-                              join planning.ligne_planning l on l.id = r.ligne_id
-                              join planning.plan_annuel p on p.id = l.plan_id
-                             where r.compte_id = :compte and p.annee = :annee and r.supprime_le is null
+                              left join planning.ligne_planning l on l.id = r.ligne_id
+                              left join planning.plan_annuel p on p.id = l.plan_id
+                             where r.compte_id = :compte and r.supprime_le is null
+                               and (p.annee = :annee or (r.ligne_id is null and extract(year from r.debut_le at time zone 'UTC') = :annee))
                              order by r.id
                             """)
                     .param("compte", acteur.compteId()).param("annee", an)

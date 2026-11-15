@@ -58,12 +58,17 @@ public final class RealisationDtos {
     }
 
     /**
+     * Réalisation envoyée par l'appareil, <b>d'une ligne de planning</b> ({@code lineId}) ou <b>spontanée</b> (sans ligne : {@code activityId}
+     * d'une activité non planifiée, {@code plantationRef} et position obligatoires). Sans ligne, {@code activityId} est l'activité ;
+     * avec une ligne, il est facultatif (et doit être celui de la ligne), et {@code plantationRef} interdit (la ligne le porte).
      * Réalisation d'une ligne de planning, envoyée par l'appareil : <b>état complet, rejouable</b> (même identifiant, même
      * contenu : même résultat). {@code status} : EN_COURS ou TERMINEE (heure de fin obligatoire). {@code expectedVersion} : version
      * connue de l'appareil, pour détecter une modification faite ailleurs (409).
      */
     public record RealisationInput(
-            @NotNull UUID lineId,
+            UUID lineId,
+            UUID activityId,
+            @Size(max = 50) String plantationRef,
             @NotNull @Pattern(regexp = "EN_COURS|TERMINEE") String status,
             @NotNull OffsetDateTime startedAt,
             OffsetDateTime endedAt,
@@ -88,14 +93,14 @@ public final class RealisationDtos {
     }
 
     /** {@code receivedAt} : réception par le serveur (la date réelle de l'action est {@code startedAt}, saisie hors ligne). */
-    public record Realisation(UUID id, UUID lineId, UUID planId, UUID accountId, UUID activityId, String status,
+    public record Realisation(UUID id, UUID lineId, UUID planId, UUID accountId, UUID activityId, String plantationRef, String status,
                               OffsetDateTime startedAt, OffsetDateTime endedAt, BigDecimal latitude, BigDecimal longitude,
                               BigDecimal accuracyM, String observations, OffsetDateTime receivedAt, long version,
                               List<Attendance> attendance, List<Evaluation> evaluations, List<Appreciation> appreciations,
                               String report) {
     }
 
-    public record RealisationSummary(UUID id, UUID lineId, UUID accountId, UUID activityId, String status,
+    public record RealisationSummary(UUID id, UUID lineId, UUID accountId, UUID activityId, String plantationRef, String status,
                                      OffsetDateTime startedAt, OffsetDateTime endedAt, OffsetDateTime receivedAt, long version) {
     }
 

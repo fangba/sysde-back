@@ -94,10 +94,12 @@ class ActiviteService {
             throw invalide("Le code d'une activité ne change pas.");
         }
         boolean planifiee = jdbc.sql("select count(*) from planning.ligne_planning where activite_id = :id and supprime_le is null")
+                .param("id", id).query(Long.class).single() > 0
+                || jdbc.sql("select count(*) from planning.realisation where activite_id = :id and supprime_le is null")
                 .param("id", id).query(Long.class).single() > 0;
         if (planifiee && (!actuelle.category().equals(in.category()) || actuelle.durationDays() != in.durationDays()
                 || actuelle.planned() != in.planned())) {
-            throw conflit("Cette activité figure déjà dans des plannings : sa catégorie, sa durée et son caractère planifié ne changent plus"
+            throw conflit("Cette activité figure déjà dans des plannings ou des réalisations : sa catégorie, sa durée et son caractère planifié ne changent plus"
                     + " (désactivez-la et créez-en une nouvelle).");
         }
         // Retirer un profil qui a déjà des lignes de planning pour cette activité : refusé.
