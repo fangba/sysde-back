@@ -33,7 +33,7 @@ Règle permanente : quand une route ou une règle change, mets à jour `docs/end
 3. ~~Le changement de mot de passe ne révoque pas les autres sessions~~ **fait le 15/11/2026** (jetons de rafraîchissement ; les jetons d'accès émis courent jusqu'à échéance).
 4. Rafraîchissement mobile : si la réponse d'un `/auth/refresh` est perdue, la famille est coupée à la réutilisation (pas de délai de grâce). À arbitrer pour le mobile hors ligne.
 5. Le front web envoie `email` à `/auth/login`, le back attend `matricule` (décision ouverte, côté front).
-6. Limitation du débit par adresse IP (EXI-05) : non faite.
+6. ~~Limitation du débit par adresse IP (EXI-05)~~ **faite le 15/11/2026** (`/auth/login` et `/auth/refresh`, 30 requêtes par minute et par adresse, en mémoire de l'instance).
 
 ## Plan d'implémentation (un module à la fois, testé)
 1. Socle (fait, à compiler/tester).
