@@ -68,7 +68,7 @@ class ReportingService {
 
     /** Activités validées de la période, avec leur réalisation et leur anomalie éventuelle (colonne {@code anomalie}). */
     private static final String ACTIVITES_DE_LA_PERIODE = """
-            select l.id as ligne_id, p.compte_id, l.activite_id, l.date_debut as prevue_le,
+            select l.id as ligne_id, r.id as realisation_id, false as spontanee, p.compte_id, l.activite_id, l.date_debut as prevue_le,
                    case when r.statut = 'TERMINEE' then (r.debut_le at time zone 'UTC')::date end as realisee_le,
                    case
                      when r.id is null or r.statut <> 'TERMINEE' then null
@@ -89,6 +89,29 @@ class ReportingService {
              where l.supprime_le is null and l.date_debut >= :du and l.date_debut < :au
                and (p.statut = 'VALIDE' or exists (select 1 from planning.soumission_activite s
                         where s.plan_id = p.id and s.activite_id = l.activite_id and s.statut = 'VALIDE'))""";
+
+    /**
+     * Activités spontanées terminées dans la période (même colonnes que ci-dessus). Pas de validation à attendre (elles n'ont pas de plan) ;
+     * comptées le jour de leur début. Anomalies : {@code HORS_SECTEUR} (position hors du contour de tous les secteurs où le compte est
+     * affecté, mêmes tolérances que pour les lignes ; jamais signalée sans contour) et {@code DOUBLON} (même plantation, même activité,
+     * même jour, même compte). Pas de {@code COURTE} : géolocaliser une plantation est rapide par nature.
+     */
+    private static final String ACTIVITES_SPONTANEES = """
+            select cast(null as uuid) as ligne_id, r.id as realisation_id, true as spontanee, r.compte_id, r.activite_id,
+                   cast(null as date) as prevue_le, (r.debut_le at time zone 'UTC')::date as realisee_le,
+                   case
+                     when exists (select 1 from iam.affectation f join referentiel.secteur s on s.id = f.secteur_id and s.geom is not null
+                                   where f.compte_id = r.compte_id and f.fin is null and f.supprime_le is null)
+                          and not exists (select 1 from iam.affectation f join referentiel.secteur s on s.id = f.secteur_id and s.geom is not null
+                                           where f.compte_id = r.compte_id and f.fin is null and f.supprime_le is null
+                                             and (ST_Covers(s.geom, ST_SetSRID(ST_MakePoint(r.longitude, r.latitude), 4326))
+                                                  or ST_DWithin(s.geom::geography, ST_SetSRID(ST_MakePoint(r.longitude, r.latitude), 4326)::geography,
+                                                                greatest(coalesce(r.precision_m, 0), 50)))) then 'HORS_SECTEUR'
+                     when count(*) over (partition by r.compte_id, r.activite_id, r.plantation_ref, (r.debut_le at time zone 'UTC')::date) > 1 then 'DOUBLON'
+                   end as anomalie
+              from planning.realisation r
+             where r.ligne_id is null and r.supprime_le is null and r.statut = 'TERMINEE'
+               and (r.debut_le at time zone 'UTC')::date >= :du and (r.debut_le at time zone 'UTC')::date < :au""";
 
     private final JdbcClient jdbc;
     private final PerimetreService perimetres;
@@ -154,13 +177,15 @@ class ReportingService {
         if (secteurs.isEmpty()) {
             return List.of();
         }
-        List<ReportActivity> activites = jdbc.sql("select t.ligne_id, t.compte_id, a.id as activite_id, a.libelle, a.categorie, t.prevue_le, t.realisee_le, t.anomalie from ("
-                        + ACTIVITES_DE_LA_PERIODE + ") t join iam.compte c on c.id = t.compte_id join planning.activite a on a.id = t.activite_id"
+        List<ReportActivity> activites = jdbc.sql("select t.ligne_id, t.realisation_id, t.spontanee, t.compte_id, a.id as activite_id, a.libelle, a.categorie,"
+                        + " t.prevue_le, t.realisee_le, t.anomalie from (" + ACTIVITES_DE_LA_PERIODE + " union all " + ACTIVITES_SPONTANEES
+                        + ") t join iam.compte c on c.id = t.compte_id join planning.activite a on a.id = t.activite_id"
                         + " where c.statut = 'ACTIF' and c.profil in (:profils) and " + Niveau.SECTEUR.portee
-                        + " order by t.prevue_le, t.ligne_id limit :max")
+                        + " order by coalesce(t.prevue_le, t.realisee_le), coalesce(t.ligne_id, t.realisation_id) limit :max")
                 .params(periode.params(seuil())).param("pop", acteur.operateurId()).param("profils", COLLABORATEURS).param("secteurs", secteurs)
                 .param("max", ACTIVITES_MAX + 1)
-                .query((rs, n) -> new ReportActivity(rs.getObject("ligne_id", UUID.class), rs.getObject("compte_id", UUID.class),
+                .query((rs, n) -> new ReportActivity(rs.getObject("ligne_id", UUID.class), rs.getObject("realisation_id", UUID.class),
+                        rs.getBoolean("spontanee"), rs.getObject("compte_id", UUID.class),
                         rs.getObject("activite_id", UUID.class), rs.getString("libelle"), rs.getString("categorie"),
                         rs.getObject("prevue_le", LocalDate.class), rs.getObject("realisee_le", LocalDate.class), rs.getString("anomalie")))
                 .list();
@@ -284,12 +309,12 @@ class ReportingService {
     }
 
     private static ReportRow vide(Entite e) {
-        return new ReportRow(e.id(), e.label(), 0, 0, 0, 0, null, "SANS_PREVU");
+        return new ReportRow(e.id(), e.label(), 0, 0, 0, 0, null, "SANS_PREVU", 0, 0);
     }
 
     /** Regroupe les activités validées de la période par entité ; les entités sans activité figurent à zéro. */
     private Synthesis synthese(Niveau niveau, Periode periode, Map<String, Object> params, List<ReportRow> entites) {
-        Map<UUID, int[]> chiffres = new HashMap<>();
+        Map<UUID, int[]> chiffres = new HashMap<>();   // prévues, réalisées, en retard, à vérifier, spontanées, spontanées à vérifier
         jdbc.sql("select " + niveau.entite + " as ent_id, count(*) as prevues, count(*) filter (where t.realisee_le is not null) as realisees,"
                         + " count(*) filter (where t.realisee_le is null and t.prevue_le < current_date) as retard,"
                         + " count(*) filter (where t.anomalie is not null) as a_verifier"
@@ -297,13 +322,24 @@ class ReportingService {
                         + " where c.statut = 'ACTIF' and c.profil in (:profils) and " + niveau.portee + " group by " + niveau.entite)
                 .params(params).param("profils", COLLABORATEURS)
                 .query((rs, n) -> chiffres.put(rs.getObject("ent_id", UUID.class),
-                        new int[] {rs.getInt("prevues"), rs.getInt("realisees"), rs.getInt("retard"), rs.getInt("a_verifier")}))
+                        new int[] {rs.getInt("prevues"), rs.getInt("realisees"), rs.getInt("retard"), rs.getInt("a_verifier"), 0, 0}))
                 .list();
+        // Activités spontanées : à part, hors du taux (elles ne sont pas prévues).
+        jdbc.sql("select " + niveau.entite + " as ent_id, count(*) as spontanees, count(*) filter (where t.anomalie is not null) as a_verifier"
+                        + " from (" + ACTIVITES_SPONTANEES + ") t join iam.compte c on c.id = t.compte_id " + niveau.jointures
+                        + " where c.statut = 'ACTIF' and c.profil in (:profils) and " + niveau.portee + " group by " + niveau.entite)
+                .params(params).param("profils", COLLABORATEURS)
+                .query((rs, n) -> {
+                    int[] c = chiffres.computeIfAbsent(rs.getObject("ent_id", UUID.class), k -> new int[6]);
+                    c[4] = rs.getInt("spontanees");
+                    c[5] = rs.getInt("a_verifier");
+                    return 0;
+                }).list();
         List<ReportRow> lignes = new ArrayList<>();
-        int[] total = new int[4];
+        int[] total = new int[6];
         for (ReportRow e : entites) {
-            int[] c = chiffres.getOrDefault(e.id(), new int[4]);
-            for (int i = 0; i < 4; i++) {
+            int[] c = chiffres.getOrDefault(e.id(), new int[6]);
+            for (int i = 0; i < 6; i++) {
                 total[i] += c[i];
             }
             lignes.add(ligne(e.id(), e.label(), c));
@@ -314,7 +350,7 @@ class ReportingService {
 
     private static ReportRow ligne(UUID id, String label, int[] c) {
         Double taux = c[0] == 0 ? null : (double) c[1] / c[0];
-        return new ReportRow(id, label, c[0], c[1], c[2], c[3], taux, statut(taux));
+        return new ReportRow(id, label, c[0], c[1], c[2], c[3], taux, statut(taux), c[4], c[5]);
     }
 
     /** À jour ≥ 90 %, Léger retard ≥ 75 %, sinon En retard (règle commune aux trois niveaux). */
