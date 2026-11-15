@@ -67,7 +67,7 @@ class ReportingService {
     }
 
     /** Activités validées de la période, avec leur réalisation et leur anomalie éventuelle (colonne {@code anomalie}). */
-    private static final String ACTIVITES_DE_LA_PERIODE = """
+    static final String ACTIVITES_DE_LA_PERIODE = """
             select l.id as ligne_id, r.id as realisation_id, false as spontanee, p.compte_id, l.activite_id, l.date_debut as prevue_le,
                    case when r.statut = 'TERMINEE' then (r.debut_le at time zone 'UTC')::date end as realisee_le,
                    case

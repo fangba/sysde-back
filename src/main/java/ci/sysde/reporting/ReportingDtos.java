@@ -55,4 +55,30 @@ public final class ReportingDtos {
 
     public record ReportOperator(UUID id, String acronym, String name, int sectors, int collaborators, Plans plans) {
     }
+
+    // ------------------------------------------------------------------ tableau de bord
+
+    /** Visites d'un mois : {@code planned} (validées, y compris les réalisées), {@code done}, {@code rate} = done / planned (absent sans prévu). */
+    public record MonthVisits(String month, int planned, int done, Double rate) {
+    }
+
+    /** Visites du mois en cours : {@code late} = prévues avant aujourd'hui et non réalisées. */
+    public record VisitBreakdown(int planned, int done, int late) {
+    }
+
+    /** {@code kind} : CONTRAT (fin d'un contrat de l'opérateur). */
+    public record Deadline(UUID id, String title, String operator, LocalDate date, String kind, String sector) {
+    }
+
+    public record SectorRef(String code, String name) {
+    }
+
+    /**
+     * Tableau de bord. {@code months} : les 12 derniers mois (le plus ancien d'abord, le mois en cours en dernier).
+     * {@code unavailable} : ce que le serveur ne peut pas encore fournir (PRODUCTION, PLANTEURS, HECTARES, RAPPORTS) : le front
+     * masque ces blocs.
+     */
+    public record DashboardData(LocalDate today, List<MonthVisits> months, VisitBreakdown visits, List<Deadline> deadlines,
+                                List<SectorRef> sectors, List<String> unavailable) {
+    }
 }
