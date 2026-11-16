@@ -263,3 +263,4 @@ Permission `CONSULTER_REPORTING` (AD, SU, CD, CS) ; **chaque niveau est réserv�
 | 15/11/2026 | Connexion alignée avec le front : matricule à la place de l'e-mail ; `user.sector` ajouté à la réponse de `/auth/login`, `/auth/refresh` et `/auth/moi`. |
 | 16/11/2026 | Tableau de bord aligné avec le front (conversion côté front, blocs non fournis masqués). Le front garde ses notifications en local (`localStorage`) : elles ne passent pas encore par `/notifications`. |
 | 16/11/2026 | Menu Paramètres : le front lit les comptes (`/comptes`, toutes les pages) comme « utilisateurs » ; `Account` gagne `sectorId`, `lotNumber`, `sections`. |
+| 16/11/2026 | Onglet Droits du front refait sur `/permissions` et `/permissions/catalogue` (profils, domaines et droits du back ; l'AD ne peut pas se retirer `GERER_PERMISSIONS` ni `GERER_REFERENTIEL`). Dénominations des organismes complétées (V19). |
