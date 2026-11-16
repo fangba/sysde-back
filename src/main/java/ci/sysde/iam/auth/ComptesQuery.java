@@ -35,6 +35,18 @@ public class ComptesQuery {
                 .single();
     }
 
+    /** Secteur de l'affectation en cours (le premier par code s'il y en a plusieurs) ; nul sans affectation. */
+    private AuthDtos.Sector secteurDe(UUID compteId) {
+        return jdbc.sql("""
+                        select s.code, s.nom from iam.affectation f join referentiel.secteur s on s.id = f.secteur_id
+                         where f.compte_id = :id and f.fin is null and f.supprime_le is null and s.supprime_le is null
+                         order by s.code limit 1
+                        """)
+                .param("id", compteId)
+                .query((rs, n) -> new AuthDtos.Sector(rs.getString("code"), rs.getString("nom")))
+                .optional().orElse(null);
+    }
+
     public List<String> permissionsDuProfil(String profil) {
         return jdbc.sql("select permission from iam.profil_permission where profil = :profil order by permission")
                 .param("profil", profil)
@@ -66,6 +78,7 @@ public class ComptesQuery {
                         "AD".equals(compte.profil()),
                         new Operator(rs.getObject("operateur_id", UUID.class), rs.getString("acronyme"),
                                 rs.getString("denomination")),
+                        secteurDe(compte.id()),
                         permissions))
                 .single();
     }

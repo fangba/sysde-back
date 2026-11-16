@@ -38,7 +38,12 @@ public final class AuthDtos {
             String profileLabel,
             boolean administrator,
             Operator operator,
+            Sector sector,
             List<String> permissions) {
+    }
+
+    /** Secteur de rattachement d'un compte (son affectation en cours ; le premier par code s'il en a plusieurs) ; absent sans affectation. */
+    public record Sector(String code, String name) {
     }
 
     /** Rafraîchissement ou déconnexion : le jeton de rafraîchissement reçu à la connexion. */

@@ -32,7 +32,7 @@ Règle permanente : quand une route ou une règle change, mets à jour `docs/end
 2. ~~**PRO-17**~~ **fait le 15/11/2026** (voir `decisions-back.md`, « PRO-17 et ORG-06 ») : les permissions ne doivent pas être figées dans le jeton ; elles sont relues côté serveur (cache < 1 min). Aujourd'hui elles sont dans le jeton (`permissions`). **ORG-06** : désactiver un opérateur doit faire rejeter les jetons déjà émis (cache < 1 min). Un filtre/convertisseur unique relisant état du compte, de l'opérateur et permissions règle les deux.
 3. ~~Le changement de mot de passe ne révoque pas les autres sessions~~ **fait le 15/11/2026** (jetons de rafraîchissement ; les jetons d'accès émis courent jusqu'à échéance).
 4. Rafraîchissement mobile : si la réponse d'un `/auth/refresh` est perdue, la famille est coupée à la réutilisation (pas de délai de grâce). À arbitrer pour le mobile hors ligne.
-5. Le front web envoie `email` à `/auth/login`, le back attend `matricule` (décision ouverte, côté front).
+5. ~~Le front web envoie `email` à `/auth/login`~~ **aligné le 15/11/2026** : le front envoie le matricule et convertit la réponse (`core/auth/auth.mapper.ts`).
 6. ~~Limitation du débit par adresse IP (EXI-05)~~ **faite le 15/11/2026** (`/auth/login` et `/auth/refresh`, 30 requêtes par minute et par adresse, en mémoire de l'instance).
 
 ## Plan d'implémentation (un module à la fois, testé)

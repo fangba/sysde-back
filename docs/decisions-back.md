@@ -95,7 +95,7 @@ Ordre : (1) socle, (2) référentiels et plantations, (3) comptes, (4) planning,
 - Reporting : qui calcule les anomalies (mobile ou back), seuil de « durée courte », règle « hors secteur », définition d'un doublon, agrégation côté serveur ou liste brute, origine du rapport mensuel par opérateur.
 - Mobile hors ligne : API livrée (état complet rejouable, 409 sur version, envoi seul) ; restent les photos, la fréquence GPS, la taille des paquets et une version minimale d'application.
 - Concurrence sur les plannings (secrétaire et collaborateur sur le même brouillon) : contrôle de version (ETag ou numéro de révision, 409).
-- Connexion : par e-mail (front de démonstration) ou par matricule (back) ; recherche serveur (paramètre `q`) pour utilisateurs, plantations, notifications (format d'erreur et pagination : tranchés le 14/11/2026).
+- Connexion : **tranché le 15/11/2026 : par matricule** (le front envoie le matricule en mode HTTP, l'e-mail reste pour la démonstration) ; recherche serveur (paramètre `q`) pour utilisateurs, plantations, notifications (format d'erreur et pagination : tranchés le 14/11/2026).
 - Visibilité des référentiels entre APROMAC et FIRCA ; conformité loi 2013-450 / ARTCI.
 - Front : renommer poste→profil/compte, retirer DI, FO→FS, adresse d'organisation, mandant du contrat, exercices (numéro et période au lieu de l'année), écrans comptes/reprise, import de contours, durée de contrat, accès hors connexion côté web.
 
