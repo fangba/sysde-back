@@ -20,7 +20,7 @@ public final class CompteDtos {
     public record Account(UUID id, UUID userId, String matricule, String reference, String number, String profile,
                           String profileLabel, UUID operatorId, String operatorAcronym, String lastName, String firstName,
                           String email, String phone, String status, boolean mustChangePassword,
-                          OffsetDateTime lastLoginAt, OffsetDateTime createdAt) {
+                          OffsetDateTime lastLoginAt, OffsetDateTime createdAt, UUID sectorId, Integer lotNumber, String sections) {
     }
 
     /** Le mot de passe temporaire n'est montré qu'une fois, à celui qui crée ou réinitialise le compte. */

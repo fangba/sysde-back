@@ -32,7 +32,13 @@ class ComptesService {
     private static final String SELECT = """
             select c.id, c.utilisateur_id, c.matricule, c.reference_compte, c.numero, c.profil, p.libelle as profil_libelle,
                    c.operateur_id, o.acronyme, u.nom, u.prenoms, u.email, u.telephone, c.statut,
-                   c.doit_changer_mot_de_passe, c.derniere_connexion, c.cree_le
+                   c.doit_changer_mot_de_passe, c.derniere_connexion, c.cree_le,
+                   (select f.secteur_id from iam.affectation f where f.compte_id = c.id and f.fin is null and f.supprime_le is null
+                     order by f.debut, f.id limit 1) as secteur_id,
+                   (select l.numero from iam.affectation f join referentiel.lot l on l.id = coalesce(f.lot_id, (select s.lot_id from referentiel.section s where s.id = f.section_id))
+                     where f.compte_id = c.id and f.fin is null and f.supprime_le is null order by f.debut, f.id limit 1) as lot_numero,
+                   (select string_agg(s.nom, ', ' order by s.nom) from iam.affectation f join referentiel.section s on s.id = f.section_id
+                     where f.compte_id = c.id and f.fin is null and f.supprime_le is null) as sections
               from iam.compte c
               join iam.utilisateur u on u.id = c.utilisateur_id
               join iam.profil p on p.code = c.profil
@@ -281,7 +287,8 @@ class ComptesService {
                 rs.getObject("operateur_id", UUID.class), rs.getString("acronyme"), rs.getString("nom"), rs.getString("prenoms"),
                 rs.getString("email"), rs.getString("telephone"), rs.getString("statut"),
                 rs.getBoolean("doit_changer_mot_de_passe"),
-                rs.getObject("derniere_connexion", java.time.OffsetDateTime.class), rs.getObject("cree_le", java.time.OffsetDateTime.class));
+                rs.getObject("derniere_connexion", java.time.OffsetDateTime.class), rs.getObject("cree_le", java.time.OffsetDateTime.class),
+                rs.getObject("secteur_id", UUID.class), rs.getObject("lot_numero", Integer.class), rs.getString("sections"));
     }
 
     private static BusinessException introuvable() {
