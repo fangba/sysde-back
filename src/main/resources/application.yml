@@ -48,8 +48,9 @@ sysde:
     # Au moins 32 caractères. À fournir par l'environnement en production.
     secret: ${SYSDE_JWT_SECRET:dev-only-secret-change-me-dev-only-secret-change-me}
     issuer: sysde
-    # Durée de vie du jeton d'accès. EXI-05 vise 15 min (PT15M) : à activer quand web et mobile appellent /auth/refresh.
-    duree: ${SYSDE_JWT_DUREE:PT8H}
+    # Durée de vie du jeton d'accès : 15 min (EXI-05). Le web renouvelle sa session par /auth/refresh ; un client qui ne le
+    # fait pas encore (mobile) doit se voir imposer une durée plus longue par SYSDE_JWT_DUREE (ex. PT8H) en attendant.
+    duree: ${SYSDE_JWT_DUREE:PT15M}
   securite:
     # Limite de débit par adresse IP sur /auth/login et /auth/refresh (mémoire de l'instance).
     debit:

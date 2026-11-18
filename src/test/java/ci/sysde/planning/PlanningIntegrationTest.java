@@ -151,7 +151,7 @@ class PlanningIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void leControleDesFrequencesEstInformatifEtAccessibleAuTitulaireEtAuChefSecteur() {
-        Secteur s = secteur("PL9", "05");
+        Secteur s = secteur("PL1", "02");
         var mo = s.moC();
         put(mo, "/plannings/mon-planning/lignes", List.of(ligne("PERFECTIONNEMENT_IN_SITU", 3, 10, s, true, null)));
         var controle = mo.get().uri("/plannings/mon-planning/controle?annee=" + ANNEE).retrieve().toEntity(LISTE).getBody();
