@@ -301,6 +301,11 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------ affectations et reprise
 
+    @SuppressWarnings("unchecked")
+    private static java.util.List<Map<String, Object>> contenu(Map<String, Object> page) {
+        return (java.util.List<Map<String, Object>>) page.get("content");
+    }
+
     private String section(RestClient cs, Equipe e, int lot, String nom) {
         return (String) cs.post().uri("/sections").contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("lotId", e.lots().get(lot).toString(), "name", nom)).retrieve().toEntity(OBJET).getBody().get("id");
@@ -334,6 +339,16 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         assertThat(a.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(a.getBody()).containsEntry("state", "ACTIVE").containsEntry("sectionName", "Nord").doesNotContainKey("endDate");
         String affectationId = (String) a.getBody().get("id");
+
+        // filtres serveur sur le territoire : secteur, lot, section (sans casse ni accents), cumulables
+        var cible = cs.get().uri("/comptes?profile=MO&sectorId=" + e.secteur()).retrieve().toEntity(OBJET).getBody();
+        assertThat(contenu(cible)).extracting(c -> c.get("id")).containsExactly(mo.id().toString());
+        Object lotNumero = contenu(cible).get(0).get("lotNumber");
+        assertThat(contenu(cs.get().uri("/comptes?profile=MO&sectorId=" + e.secteur() + "&lot=" + lotNumero + "&section=nOrD").retrieve().toEntity(OBJET).getBody()))
+                .extracting(c -> c.get("id")).containsExactly(mo.id().toString());
+        assertThat(contenu(cs.get().uri("/comptes?profile=MO&section=sud").retrieve().toEntity(OBJET).getBody())).isEmpty();
+        assertThat(contenu(cs.get().uri("/comptes?profile=MO&lot=" + ((Integer) lotNumero + 1000)).retrieve().toEntity(OBJET).getBody())).isEmpty();
+        assertThat(contenu(cs.get().uri("/comptes?profile=MO&sectorId=" + autre.secteur()).retrieve().toEntity(OBJET).getBody())).isEmpty();
 
         // règles de la base : une section n'a qu'un moniteur ; un moniteur s'affecte à une section, pas à un secteur entier
         var deuxieme = cs.post().uri("/comptes/" + mo2.id() + "/affectations").contentType(MediaType.APPLICATION_JSON)

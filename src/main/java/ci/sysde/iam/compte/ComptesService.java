@@ -52,6 +52,13 @@ class ComptesService {
             "status", "c.statut",
             "createdAt", "c.cree_le");
 
+    /** Territoire d'affectation recherché ; tout est optionnel. */
+    record Territoire(UUID secteur, Integer lot, String section) {
+        boolean vide() {
+            return secteur == null && lot == null && (section == null || section.isBlank());
+        }
+    }
+
     private final JdbcClient jdbc;
     private final PorteeComptes portees;
     private final PasswordEncoder encodeur;
@@ -68,7 +75,7 @@ class ComptesService {
 
     /** Recherche paginée dans le périmètre de l'appelant ; {@code q} cherche dans le nom, les prénoms et le matricule. */
     @Transactional(readOnly = true)
-    Page<Account> lister(Acteur acteur, String q, String profil, String statut, UUID operateur, PageRequete page, String sort) {
+    Page<Account> lister(Acteur acteur, String q, String profil, String statut, UUID operateur, Territoire territoire, PageRequete page, String sort) {
         PorteeComptes.Condition portee = portees.de(acteur);
         StringBuilder where = new StringBuilder(" and (").append(portee.sql()).append(")");
         Map<String, Object> params = new java.util.HashMap<>(portee.params());
@@ -89,6 +96,26 @@ class ComptesService {
         if (operateur != null) {
             where.append(" and c.operateur_id = :operateur");
             params.put("operateur", operateur);
+        }
+        if (territoire != null && !territoire.vide()) {
+            // Une seule affectation en cours doit satisfaire tous les critères (secteur, lot, section) à la fois.
+            StringBuilder t = new StringBuilder(" and exists (select 1 from iam.affectation f"
+                    + " left join referentiel.section fs on fs.id = f.section_id"
+                    + " left join referentiel.lot fl on fl.id = coalesce(f.lot_id, fs.lot_id)"
+                    + " where f.compte_id = c.id and f.fin is null and f.supprime_le is null");
+            if (territoire.secteur() != null) {
+                t.append(" and f.secteur_id = :tsecteur");
+                params.put("tsecteur", territoire.secteur());
+            }
+            if (territoire.lot() != null) {
+                t.append(" and fl.numero = :tlot");
+                params.put("tlot", territoire.lot());
+            }
+            if (territoire.section() != null && !territoire.section().isBlank()) {
+                t.append(" and util.sans_accent(fs.nom) like util.sans_accent(:tsection)");
+                params.put("tsection", "%" + territoire.section().strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+            }
+            where.append(t).append(")");
         }
         String ordre = TriSql.clause(sort, TRIS, "c.matricule asc", "c.id asc");
         long total = jdbc.sql("select count(*) from iam.compte c join iam.utilisateur u on u.id = c.utilisateur_id"
