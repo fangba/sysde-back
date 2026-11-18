@@ -174,12 +174,13 @@ Aujourd'hui, en démo, les notifications sont gardées dans le navigateur. Avec 
 | 🟢 | `GET /notifications` | | `AppNotification[]` : `id, title, message, tone (info/success/warning/error…), createdAt, read` | Destinataire déduit du jeton. Le champ `to` (e-mail) du front disparaît. Le front n'a pas de pagination : prévoir au moins une limite (les 50 dernières). |
 | 🟢 | `POST /notifications/{id}/lue` | `{}` | 204 | **Nouvelle, non encore appelée par le front** (aujourd'hui `markRead` local). |
 | 🟢 | `POST /notifications/lues` | `{}` | 204 | Idem, pour « tout marquer comme lu » (`markAllRead`). |
+| 🟢 | `GET /notifications/flux` | | Flux SSE (`text/event-stream`) | **Temps réel.** Événement `notification` dont les données sont une notification (même forme que la liste) ; commentaires `:connecte` puis `:battement` toutes les 25 s. Le serveur ferme le flux au bout de 10 min (moins que la durée du jeton) : le client se reconnecte avec un jeton à jour. Jeton Bearer en en-tête (donc `fetch`/`HttpClient`, pas `EventSource`). La poussée a lieu après validation de la transaction. |
 
 **Implémenté le 15/11/2026** (migration V14, table `iam.notification`) : `AppNotification {id, title, message, tone (info | success | warning | error), createdAt, read}`, les 50 dernières, la plus récente d'abord ; un compte ne lit et ne marque que les siennes (404 sinon). Les notifications sont **créées par le serveur**, comme effet des actions suivantes (le front ne les enverra pas) :
 - validation ou rejet d'un planning → au collaborateur ;
 - validation ou rejet d'une activité → au collaborateur ;
 - soumission d'un planning par la secrétaire à la place d'un collaborateur → au collaborateur.
-Le front affiche un toast « Vous avez N nouvelles notifications » à la connexion ; un rafraîchissement périodique reste à définir.
+Le front affiche un toast « Vous avez N nouvelles notifications » à la connexion, puis reçoit les nouvelles en temps réel par `GET /notifications/flux` (relecture de secours toutes les 5 min). Les abonnés sont gardés **en mémoire de l'instance** : avec plusieurs instances du back, une notification créée sur l'une n'est poussée qu'à ses propres abonnés (la relecture de secours rattrape le reste ; un bus type Redis ou `LISTEN/NOTIFY` serait nécessaire pour mieux).
 
 ## 5. Dashboard (`features/dashboard/data/dashboard.api.ts`)
 | État | Méthode et chemin | Corps / paramètres | Réponse | À savoir |
@@ -233,7 +234,7 @@ Permission `CONSULTER_REPORTING` (AD, SU, CD, CS) ; **chaque niveau est réserv�
 3. Pagination : convention fixée (voir Conventions) ; à appliquer à `/utilisateurs`, `/plantations`, `/notifications`. La recherche serveur reste à définir (paramètre `q`).
 4. Concurrence : la secrétaire et le collaborateur peuvent modifier le même brouillon ; prévoir un contrôle de version (ETag ou numéro de révision, 409 en cas de conflit).
 5. Où vivent les règles de fréquence (voir 3.5).
-6. Fréquence de rafraîchissement des notifications (sondage ou temps réel).
+6. ~~Fréquence de rafraîchissement des notifications~~ : tranché le 18/11/2026, temps réel par SSE (`GET /notifications/flux`), relecture de secours toutes les 5 min.
 
 ## Journal des mises à jour
 | Date | Changement |
@@ -277,3 +278,4 @@ Permission `CONSULTER_REPORTING` (AD, SU, CD, CS) ; **chaque niveau est réserv�
 | 18/11/2026 | **Pagination des comptes côté front** : les onglets de Tâches (Utilisateur, chef de département, chef secteur, collaborateur) lisent `GET /comptes` page par page (recherche `q`, `profile`, `status`, `operatorId`) au lieu de charger tous les comptes ; l'écran Paramètres ne charge plus la liste complète (seuls les moniteurs, `profile=MO`, par pages de 100, pour les groupes). Le planning et le tableau de bord décrivent le titulaire par `account` du plan. Côté back : `profile` accepte plusieurs profils (virgules) et `q` ignore les accents. Les filtres de colonne secteur / lot / section du front ne sont plus offerts (pas de paramètre serveur) ; un chef secteur voit aussi les comptes sans affectation. |
 | 18/11/2026 | **Durée du jeton d'accès ramenée de 8 h à 15 min** (EXI-05, `sysde.jwt.duree` / `SYSDE_JWT_DUREE`). Le web renouvelle la session par `/auth/refresh`. **Le mobile doit en faire autant** : sans cela il sera déconnecté toutes les 15 min ; en attendant, poser `SYSDE_JWT_DUREE=PT8H` sur l'environnement qui le sert. Le jeton de rafraîchissement dure toujours 30 jours. |
 | 18/11/2026 | **Contrôle des fréquences branché sur le front** : « Vérifier » et la soumission d'une activité envoient le brouillon à `POST /plannings/mon-planning/controle` ; la revue du chef secteur lit `GET /plannings/{planId}/controle` pour chaque planning à décider (repli sur le contrôle local si l'appel échoue). La secrétaire qui saisit pour un collaborateur garde le contrôle local (l'endpoint contrôle le poste de l'appelant). |
+| 18/11/2026 | **Notifications en temps réel (SSE)** : `GET /notifications/flux` pousse chaque nouvelle notification à son destinataire dès la validation de la transaction qui la crée. Flux borné à 10 min (reconnexion du client avec un jeton à jour, ce qui borne aussi l'abonnement d'un compte désactivé), battement de cœur toutes les 25 s. Côté front, le flux passe par `HttpClient` (jeton, renouvellement sur 401) ; reconnexion automatique avec recul, relecture de la liste à chaque reconnexion, sondage ramené à 5 min. Limite : registre des abonnés local à l'instance (voir §4). |
