@@ -9,12 +9,14 @@ import java.util.UUID;
  * {@code jetonsValidesDepuis} : tout jeton émis avant cet instant est refusé (nul : pas de coupure).
  * {@code envoiSeul} : compte désactivé depuis moins de {@code compte.delai_synchronisation_jours} jours, qui ne peut
  * plus qu'envoyer ce qu'il a saisi hors ligne (ses permissions sont alors réduites à l'envoi).
+ * {@code doitChangerMotDePasse} : mot de passe temporaire (création, réinitialisation) : tant qu'il n'est pas changé,
+ * le compte ne peut que consulter son profil, changer son mot de passe et se déconnecter.
  */
 public record EtatCompte(UUID compteId, String matricule, String profil, UUID operateurId, Set<String> permissions,
-                         Instant jetonsValidesDepuis, boolean envoiSeul) {
+                         Instant jetonsValidesDepuis, boolean envoiSeul, boolean doitChangerMotDePasse) {
 
     public EtatCompte(UUID compteId, String matricule, String profil, UUID operateurId, Set<String> permissions,
                       Instant jetonsValidesDepuis) {
-        this(compteId, matricule, profil, operateurId, permissions, jetonsValidesDepuis, false);
+        this(compteId, matricule, profil, operateurId, permissions, jetonsValidesDepuis, false, false);
     }
 }

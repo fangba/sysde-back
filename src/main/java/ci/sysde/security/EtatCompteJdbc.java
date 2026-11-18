@@ -33,7 +33,7 @@ class EtatCompteJdbc implements EtatCompteSource {
 
     private Optional<EtatCompte> lire(UUID compteId, String condition, boolean envoiSeul) {
         return jdbc.sql("""
-                        select c.matricule, c.profil, c.operateur_id, c.jetons_valides_depuis,
+                        select c.matricule, c.profil, c.operateur_id, c.jetons_valides_depuis, c.doit_changer_mot_de_passe,
                                coalesce((select array_agg(pp.permission order by pp.permission)
                                            from iam.profil_permission pp where pp.profil = c.profil), '{}') as permissions
                           from iam.compte c
@@ -45,7 +45,8 @@ class EtatCompteJdbc implements EtatCompteSource {
                 .query((rs, n) -> new EtatCompte(compteId, rs.getString("matricule"), rs.getString("profil"),
                         rs.getObject("operateur_id", UUID.class), Set.of((String[]) rs.getArray("permissions").getArray()),
                         Optional.ofNullable(rs.getObject("jetons_valides_depuis", java.time.OffsetDateTime.class))
-                                .map(java.time.OffsetDateTime::toInstant).orElse(null), envoiSeul))
+                                .map(java.time.OffsetDateTime::toInstant).orElse(null), envoiSeul,
+                        !envoiSeul && rs.getBoolean("doit_changer_mot_de_passe")))
                 .optional();
     }
 }

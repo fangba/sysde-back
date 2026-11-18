@@ -20,6 +20,8 @@ class JwtEtatConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
     /** Autorité portée par un compte désactivé qui n'a plus que le droit d'envoyer. */
     static final String ENVOI_SEUL = "ENVOI_SEUL";
+    /** Autorité portée par un compte au mot de passe temporaire : il ne peut que le changer (et se déconnecter). */
+    static final String MOT_DE_PASSE_TEMPORAIRE = "MOT_DE_PASSE_TEMPORAIRE";
     private static final String ENVOI = "REALISER_ACTIVITE";
 
     private final EtatCompteService etats;
@@ -46,9 +48,13 @@ class JwtEtatConverter implements Converter<Jwt, AbstractAuthenticationToken> {
         }
         // Envoi seul (compte désactivé depuis peu) : seule la permission d'envoyer subsiste, et une autorité marque le cas
         // pour que la configuration de sécurité ferme tout le reste.
-        var permissions = etat.envoiSeul()
-                ? etat.permissions().stream().filter(JwtEtatConverter.ENVOI::equals).collect(java.util.stream.Collectors.toSet())
-                : etat.permissions();
+        // Mot de passe temporaire : aucune permission tant qu'il n'est pas changé (la configuration de sécurité ne laisse
+        // passer que le changement de mot de passe, le profil et la déconnexion).
+        var permissions = etat.doitChangerMotDePasse()
+                ? java.util.Set.<String>of()
+                : etat.envoiSeul()
+                        ? etat.permissions().stream().filter(JwtEtatConverter.ENVOI::equals).collect(java.util.stream.Collectors.toSet())
+                        : etat.permissions();
         Jwt courant = Jwt.withTokenValue(jwt.getTokenValue())
                 .headers(h -> h.putAll(jwt.getHeaders()))
                 .claims(c -> {
@@ -63,6 +69,9 @@ class JwtEtatConverter implements Converter<Jwt, AbstractAuthenticationToken> {
                 permissions.stream().sorted().map(p -> new SimpleGrantedAuthority("PERM_" + p)).toList());
         if (etat.envoiSeul()) {
             autorites.add(new SimpleGrantedAuthority(ENVOI_SEUL));
+        }
+        if (etat.doitChangerMotDePasse()) {
+            autorites.add(new SimpleGrantedAuthority(MOT_DE_PASSE_TEMPORAIRE));
         }
         return new JwtAuthenticationToken(courant, autorites, compteId.toString());
     }

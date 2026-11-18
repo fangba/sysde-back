@@ -41,8 +41,9 @@ class TracabiliteIntegrationTest extends AbstractIntegrationTest {
         assertThat(creation.get("after").toString()).doesNotContain("$2").doesNotContain(mo.motDePasse());
 
         // le CS ne voit pas ce que son CD a fait (la création du CS) ; le CD voit celui du CS ; un autre opérateur ne voit rien
+        // (son propre changement de mot de passe, fait à la création du compte de test, reste visible : il en est l'auteur)
         assertThat(contenu(c.cs().client().get().uri("/tracabilite?table=compte&objectId=" + c.cs().id()).retrieve().toEntity(OBJET).getBody()))
-                .isEmpty();
+                .extracting(e -> e.get("operation")).doesNotContain("I");
         assertThat(contenu(c.cd().client().get().uri("/tracabilite?table=compte&objectId=" + mo.id()).retrieve().toEntity(OBJET).getBody()))
                 .isNotEmpty();
         Chaine autre = chaine("TRB");

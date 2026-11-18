@@ -180,6 +180,34 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void unMotDePasseTemporaireNeLaisseQueLeChangementDuMotDePasse() {
+        Chaine c = chaine("TMP");
+        Session mo = creerTemporaire(c.cs().client(), "Temporaire", "MO", c.operateur(), null);
+        // consulter son profil, oui ; le reste est fermé, avec un code que le front reconnaît
+        assertThat(mo.client().get().uri("/auth/moi").retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.OK);
+        var ferme = mo.client().get().uri("/comptes").retrieve().toEntity(OBJET);
+        assertThat(ferme.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(ferme.getBody()).containsEntry("code", "MOT_DE_PASSE_TEMPORAIRE");
+        assertThat(mo.client().get().uri("/carte/catalogue").retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        // le changement de mot de passe lève le verrou aussitôt, avec le même jeton
+        assertThat(mo.client().post().uri("/auth/mot-de-passe").contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("currentPassword", mo.motDePasse(), "newPassword", "Nouveau-mdp-2026!"))
+                .retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(mo.client().get().uri("/carte/catalogue").retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void reinitialiserVerrouDeNouveauLeCompteJusquAuChangement() throws Exception {
+        Chaine c = chaine("RVT");
+        Session co = creer(c.cs().client(), "Reverrou", "CO", c.operateur(), null);
+        Thread.sleep(1100);                                   // les jetons portent une date à la seconde
+        var reset = c.cs().client().post().uri("/comptes/" + co.id() + "/reinitialisation").contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of()).retrieve().toEntity(OBJET);
+        Session apres = ouvrir(co.id(), co.matricule(), (String) reset.getBody().get("temporaryPassword"));
+        assertThat(apres.client().get().uri("/carte/catalogue").retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void changerSonMotDePasseCoupeLesAutresSessionsEtGardeLaCourante() {
         Chaine c = chaine("MDP");
         Session mo = creer(c.cs().client(), "Mdp", "MO", c.operateur(), null);

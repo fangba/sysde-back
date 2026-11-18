@@ -61,16 +61,41 @@ class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/participants", "/mobile/synchronisation").authenticated()
                         .anyRequest().access((auth, contexte) -> new AuthorizationDecision(
                                 auth.get() instanceof JwtAuthenticationToken jeton && jeton.isAuthenticated()
-                                        && jeton.getAuthorities().stream()
-                                                .noneMatch(autorite -> JwtEtatConverter.ENVOI_SEUL.equals(autorite.getAuthority())))))
+                                        && !aAutorite(jeton, JwtEtatConverter.ENVOI_SEUL)
+                                        && (!aAutorite(jeton, JwtEtatConverter.MOT_DE_PASSE_TEMPORAIRE)
+                                                || routeDuMotDePasseTemporaire(contexte.getRequest())))))
                 .oauth2ResourceServer(o -> o
                         .authenticationEntryPoint(nonAuthentifie)
                         .jwt(j -> j.jwtAuthenticationConverter(convertisseur)))
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(nonAuthentifie)
-                        .accessDeniedHandler((req, res, ex) -> ecrire(res, HttpStatus.FORBIDDEN,
-                                "ACCES_REFUSE", "Vous n'avez pas le droit d'effectuer cette action.")));
+                        .accessDeniedHandler((req, res, ex) -> {
+                            var courant = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                                    .getAuthentication();
+                            if (courant != null && courant.getAuthorities().stream().anyMatch(
+                                    a -> JwtEtatConverter.MOT_DE_PASSE_TEMPORAIRE.equals(a.getAuthority()))) {
+                                ecrire(res, HttpStatus.FORBIDDEN, "MOT_DE_PASSE_TEMPORAIRE",
+                                        "Votre mot de passe est temporaire : choisissez un mot de passe personnel avant de continuer.");
+                            } else {
+                                ecrire(res, HttpStatus.FORBIDDEN, "ACCES_REFUSE",
+                                        "Vous n'avez pas le droit d'effectuer cette action.");
+                            }
+                        }));
         return http.build();
+    }
+
+    private static boolean aAutorite(JwtAuthenticationToken jeton, String autorite) {
+        return jeton.getAuthorities().stream().anyMatch(a -> autorite.equals(a.getAuthority()));
+    }
+
+    /** Ce que peut faire un compte au mot de passe temporaire : se voir, changer son mot de passe, se déconnecter. */
+    private static boolean routeDuMotDePasseTemporaire(jakarta.servlet.http.HttpServletRequest requete) {
+        String chemin = requete.getRequestURI().substring(requete.getContextPath().length());
+        return switch (requete.getMethod()) {
+            case "GET" -> chemin.equals("/auth/moi");
+            case "POST" -> chemin.equals("/auth/mot-de-passe") || chemin.equals("/auth/logout");
+            default -> false;
+        };
     }
 
     /** Erreur de sécurité au même format que le reste de l'API (RFC 9457, champs historiques conservés). */

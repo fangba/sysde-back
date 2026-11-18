@@ -190,8 +190,21 @@ public abstract class AbstractIntegrationTest {
         return m;
     }
 
-    @SuppressWarnings("unchecked")
+    protected static final String MOT_DE_PASSE_PERSONNEL = "Mdp-personnel-2026!";
+
+    /** Un compte prêt à servir : le mot de passe temporaire est changé tout de suite (sinon le compte est verrouillé), puis nouvelle connexion. */
     protected Session creer(RestClient par, String nom, String profil, UUID operateur, String numero) {
+        Session temporaire = creerTemporaire(par, nom, profil, operateur, numero);
+        var r = temporaire.client().post().uri("/auth/mot-de-passe").contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("currentPassword", temporaire.motDePasse(), "newPassword", MOT_DE_PASSE_PERSONNEL))
+                .retrieve().toBodilessEntity();
+        assertThat(r.getStatusCode()).as("mot de passe personnel de " + nom).isEqualTo(HttpStatus.NO_CONTENT);
+        return ouvrir(temporaire.id(), temporaire.matricule(), MOT_DE_PASSE_PERSONNEL);
+    }
+
+    /** Un compte tel que l'API le crée : mot de passe temporaire, donc verrouillé jusqu'à son changement. */
+    @SuppressWarnings("unchecked")
+    protected Session creerTemporaire(RestClient par, String nom, String profil, UUID operateur, String numero) {
         var r = par.post().uri("/comptes").contentType(MediaType.APPLICATION_JSON).body(corps(nom, profil, operateur, numero))
                 .retrieve().toEntity(OBJET);
         assertThat(r.getStatusCode()).as("création de " + nom).isEqualTo(HttpStatus.CREATED);

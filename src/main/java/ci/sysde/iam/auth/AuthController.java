@@ -7,6 +7,7 @@ import ci.sysde.iam.auth.AuthDtos.LoginRequest;
 import ci.sysde.iam.auth.AuthDtos.LoginResponse;
 import ci.sysde.iam.auth.AuthDtos.RefreshRequest;
 import ci.sysde.iam.auth.AuthDtos.SessionUser;
+import ci.sysde.security.EtatCompteService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -24,10 +25,12 @@ class AuthController {
 
     private final AuthService service;
     private final SessionService sessions;
+    private final EtatCompteService etats;
 
-    AuthController(AuthService service, SessionService sessions) {
+    AuthController(AuthService service, SessionService sessions, EtatCompteService etats) {
         this.service = service;
         this.sessions = sessions;
+        this.etats = etats;
     }
 
     @PostMapping("/login")
@@ -60,6 +63,8 @@ class AuthController {
         service.changerMotDePasse(UUID.fromString(auth.getName()), requete.currentPassword(),
                 requete.newPassword(), http.getRemoteAddr());
         sessions.couperAutresSessions(UUID.fromString(auth.getName()), requete.refreshToken());
+        // Le verrou « mot de passe temporaire » se lève tout de suite, sans attendre la fin du cache d'état.
+        etats.invalider(UUID.fromString(auth.getName()));
     }
 
     private static String appareil(HttpServletRequest http) {
