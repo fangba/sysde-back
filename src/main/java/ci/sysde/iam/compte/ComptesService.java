@@ -73,12 +73,14 @@ class ComptesService {
         StringBuilder where = new StringBuilder(" and (").append(portee.sql()).append(")");
         Map<String, Object> params = new java.util.HashMap<>(portee.params());
         if (q != null && !q.isBlank()) {
-            where.append(" and (lower(u.nom || ' ' || u.prenoms) like :q or lower(c.matricule) like :q)");
-            params.put("q", "%" + q.strip().toLowerCase(java.util.Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+            // Sans casse ni accents (comme la recherche du front) ; % et _ saisis sont du texte.
+            where.append(" and (util.sans_accent(u.nom || ' ' || u.prenoms) like util.sans_accent(:q) or lower(c.matricule) like util.sans_accent(:q))");
+            params.put("q", "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
         }
         if (profil != null && !profil.isBlank()) {
-            where.append(" and c.profil = :profil");
-            params.put("profil", profil);
+            // Un ou plusieurs profils, séparés par des virgules (ex. « CF,CO,MO »).
+            where.append(" and c.profil in (:profils)");
+            params.put("profils", java.util.Arrays.stream(profil.split(",")).map(String::strip).filter(x -> !x.isEmpty()).toList());
         }
         if (statut != null && !statut.isBlank()) {
             where.append(" and c.statut = :statut");

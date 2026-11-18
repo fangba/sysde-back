@@ -92,6 +92,12 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         assertThat((List<?>) q.get("content")).hasSize(1);
         var parProfil = a.cd().client().get().uri("/comptes?profile=CO").retrieve().toEntity(OBJET).getBody();
         assertThat((List<?>) parProfil.get("content")).hasSize(1);
+        // plusieurs profils d'un coup, et une recherche sans accents (« Traoré » se trouve en tapant « traore »)
+        var deuxProfils = a.cd().client().get().uri("/comptes?profile=CF,CO").retrieve().toEntity(OBJET).getBody();
+        assertThat((List<?>) deuxProfils.get("content")).hasSize(2);
+        creer(a.cs().client(), "Kouamé", "MO", a.operateur(), null);
+        assertThat((List<?>) a.cd().client().get().uri("/comptes?q=kouame").retrieve().toEntity(OBJET).getBody().get("content")).hasSize(1);
+        assertThat((List<?>) a.cd().client().get().uri("/comptes?q=KOUAMÉ").retrieve().toEntity(OBJET).getBody().get("content")).hasSize(1);
         // la recherche traite % et _ comme du texte
         assertThat((List<?>) a.cd().client().get().uri("/comptes?q=%25").retrieve().toEntity(OBJET).getBody().get("content")).isEmpty();
         assertThat(a.cd().client().get().uri("/comptes?sort=password,asc").retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -103,7 +109,7 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         // un chef secteur voit ses techniciens non affectés, pas ceux d'un autre opérateur
         var csPage = a.cs().client().get().uri("/comptes?size=50").retrieve().toEntity(OBJET).getBody();
         @SuppressWarnings("unchecked") var csContenu = (List<Map<String, Object>>) csPage.get("content");
-        assertThat(csContenu).extracting(x -> x.get("lastName")).containsExactlyInAnyOrder("Diallo", "Traore");
+        assertThat(csContenu).extracting(x -> x.get("lastName")).containsExactlyInAnyOrder("Diallo", "Kouamé", "Traore");
         // sans la permission : 403
         assertThat(creer(a.cs().client(), "Simple", "MO", a.operateur(), null).client().get().uri("/comptes")
                 .retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
