@@ -159,6 +159,17 @@ class PlanningIntegrationTest extends AbstractIntegrationTest {
         // 3 par mois attendues : une seule séance en mars, rien les autres mois
         assertThat(perf).containsEntry("ok", false).containsEntry("actual", 1).containsEntry("expected", 36);
         assertThat(liste(perf, "issues")).isNotEmpty();
+        // un brouillon (pas encore enregistré) se contrôle sans rien écrire
+        var brouillon = mo.post().uri("/plannings/mon-planning/controle").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(List.of(ligne("PERFECTIONNEMENT_IN_SITU", 3, 3, s, true, null), ligne("PERFECTIONNEMENT_IN_SITU", 3, 10, s, true, null),
+                        ligne("PERFECTIONNEMENT_IN_SITU", 3, 17, s, true, null)))
+                .retrieve().toEntity(LISTE);
+        assertThat(statut(brouillon)).isEqualTo(HttpStatus.OK);
+        var perfBrouillon = brouillon.getBody().stream().filter(c -> activite("PERFECTIONNEMENT_IN_SITU").toString().equals(c.get("activityId"))).findFirst().orElseThrow();
+        assertThat(perfBrouillon).containsEntry("actual", 3);
+        assertThat(liste(perfBrouillon, "issues")).isNotEmpty();
+        // le brouillon n'a rien enregistré
+        assertThat(liste(mo.get().uri("/plannings/mon-planning?annee=" + ANNEE).retrieve().toEntity(OBJET).getBody(), "lines")).hasSize(1);
         // la soumission n'est pas bloquée (mode AVERTIR par défaut)
         assertThat(statut(post(mo, "/plannings/mon-planning/soumission"))).isEqualTo(HttpStatus.OK);
 

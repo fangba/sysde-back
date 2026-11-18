@@ -57,6 +57,13 @@ class PlanningController {
         return service.controlerMonPlanning(Acteur.depuis(auth), annee(annee));
     }
 
+    /** Contrôle de dates pas encore enregistrées (le brouillon de l'éditeur) : rien n'est écrit. */
+    @PostMapping("/plannings/mon-planning/controle")
+    @PreAuthorize("hasAuthority('PERM_CONSULTER_PLANNING')")
+    List<FrequencyCheck> controleBrouillon(@RequestBody List<@Valid PlanLineInput> lignes, Authentication auth) {
+        return service.controlerBrouillon(Acteur.depuis(auth), lignes);
+    }
+
     /** Contrôle des fréquences du planning d'un collaborateur du secteur (chef secteur). */
     @GetMapping("/plannings/{planId}/controle")
     @PreAuthorize("hasAuthority('PERM_CONSULTER_PLANNING')")

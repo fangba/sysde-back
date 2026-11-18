@@ -119,6 +119,43 @@ public class PlanningService {
         return controler(obtenir(acteur.compteId(), annee), null);
     }
 
+    /**
+     * Contrôle de dates saisies mais pas encore enregistrées (le brouillon de l'éditeur) face aux fréquences de mon profil.
+     * Rien n'est écrit ni vérifié d'autre : la saisie, elle, reste contrôlée à l'enregistrement.
+     */
+    @Transactional(readOnly = true)
+    List<FrequencyCheck> controlerBrouillon(Acteur acteur, List<PlanLineInput> lignes) {
+        exigerProfilPlanning(acteur);
+        List<PlanLineInput> saisie = lignes == null ? List.of() : lignes;
+        Map<UUID, Integer> lots = new HashMap<>();
+        Set<UUID> lotIds = new HashSet<>();
+        saisie.stream().map(PlanLineInput::lotId).filter(java.util.Objects::nonNull).forEach(lotIds::add);
+        if (!lotIds.isEmpty()) {
+            jdbc.sql("select id, numero from referentiel.lot where id in (:ids)").param("ids", lotIds)
+                    .query((rs, n) -> {
+                        lots.put(rs.getObject("id", UUID.class), rs.getInt("numero"));
+                        return null;
+                    }).list();
+        }
+        Map<UUID, String> sections = new HashMap<>();
+        Set<UUID> sectionIds = new HashSet<>();
+        saisie.stream().map(PlanLineInput::sectionId).filter(java.util.Objects::nonNull).forEach(sectionIds::add);
+        if (!sectionIds.isEmpty()) {
+            jdbc.sql("select id, nom from referentiel.section where id in (:ids)").param("ids", sectionIds)
+                    .query((rs, n) -> {
+                        sections.put(rs.getObject("id", UUID.class), rs.getString("nom"));
+                        return null;
+                    }).list();
+        }
+        List<PlanLine> vues = saisie.stream().map(l -> new PlanLine(null, l.date(), l.endDate() == null ? l.date() : l.endDate(),
+                l.activityId(), l.lotId(), l.lotId() == null ? null : lots.get(l.lotId()), l.sectionId(),
+                l.sectionId() == null ? null : sections.get(l.sectionId()),
+                l.plantationRef() == null || l.plantationRef().isBlank() ? null : l.plantationRef().strip(), l.groupId())).toList();
+        return activitesDuProfil(acteur.profil()).stream()
+                .map(a -> ControleFrequences.controler(a, vues.stream().filter(l -> l.activityId().equals(a.id())).toList()))
+                .toList();
+    }
+
     /** Contrôle du planning d'un collaborateur du secteur (chef secteur). */
     @Transactional(readOnly = true)
     List<FrequencyCheck> controlerPlanDeLEquipe(Acteur cs, UUID planId) {
