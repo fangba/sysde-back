@@ -62,5 +62,9 @@ sysde:
   # Sans URL, /plantations et /carte/plantations répondent 503.
   # Cache (cache: PT60S), tolérance si la source tombe (cache-perime: PT10M), coupe-circuit (coupe-circuit.echecs: 5, .pause: PT30S).
   # sysde.plantations.verification-planning=true : les plantations des visites du planning sont vérifiées (désactivé par défaut).
+  planning:
+    # AVERTIR (défaut) : les fréquences ne se contrôlent qu'à la demande (GET /plannings/mon-planning/controle).
+    # BLOQUER : une soumission dont les dates ne respectent pas les fréquences est refusée (422). Règle à valider avec le client.
+    controle-frequences: ${SYSDE_PLANNING_CONTROLE_FREQUENCES:AVERTIR}
   cors:
     origines: ${SYSDE_CORS_ORIGINES:http://localhost:4200}

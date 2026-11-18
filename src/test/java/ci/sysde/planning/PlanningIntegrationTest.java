@@ -150,6 +150,27 @@ class PlanningIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void leControleDesFrequencesEstInformatifEtAccessibleAuTitulaireEtAuChefSecteur() {
+        Secteur s = secteur("PL9", "05");
+        var mo = s.moC();
+        put(mo, "/plannings/mon-planning/lignes", List.of(ligne("PERFECTIONNEMENT_IN_SITU", 3, 10, s, true, null)));
+        var controle = mo.get().uri("/plannings/mon-planning/controle?annee=" + ANNEE).retrieve().toEntity(LISTE).getBody();
+        var perf = controle.stream().filter(c -> activite("PERFECTIONNEMENT_IN_SITU").toString().equals(c.get("activityId"))).findFirst().orElseThrow();
+        // 3 par mois attendues : une seule séance en mars, rien les autres mois
+        assertThat(perf).containsEntry("ok", false).containsEntry("actual", 1).containsEntry("expected", 36);
+        assertThat(liste(perf, "issues")).isNotEmpty();
+        // la soumission n'est pas bloquée (mode AVERTIR par défaut)
+        assertThat(statut(post(mo, "/plannings/mon-planning/soumission"))).isEqualTo(HttpStatus.OK);
+
+        // le chef secteur contrôle le plan de son collaborateur
+        var equipe = s.cs().get().uri("/plannings/equipe?annee=" + ANNEE).retrieve().toEntity(LISTE).getBody();
+        String planId = (String) equipe.stream().filter(p -> idCompte(p).equals(s.mo().toString())).findFirst().orElseThrow().get("id");
+        assertThat(statut(s.cs().get().uri("/plannings/" + planId + "/controle").retrieve().toEntity(LISTE))).isEqualTo(HttpStatus.OK);
+        // un moniteur n'a pas accès au contrôle d'un plan d'équipe
+        assertThat(statut(mo.get().uri("/plannings/" + planId + "/controle").retrieve().toEntity(OBJET))).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void lesActivitesSeSoumettentUneAUneEtSeVerrouillent() {
         Secteur s = secteur("PL5", "04");
         var mo = s.moC();

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import ci.sysde.planning.PlanningDtos.AnnualPlan;
+import ci.sysde.planning.PlanningDtos.FrequencyCheck;
 import ci.sysde.planning.PlanningDtos.PlanActivity;
 import ci.sysde.planning.PlanningDtos.PlanLineInput;
 import ci.sysde.planning.PlanningDtos.ReasonInput;
@@ -47,6 +48,20 @@ class PlanningController {
     @PreAuthorize("hasAuthority('PERM_CONSULTER_PLANNING')")
     AnnualPlan monPlanning(@RequestParam(required = false) Integer annee, Authentication auth) {
         return service.monPlanning(Acteur.depuis(auth), annee(annee));
+    }
+
+    /** Contrôle des dates de mon planning face aux fréquences de mon profil (informatif). */
+    @GetMapping("/plannings/mon-planning/controle")
+    @PreAuthorize("hasAuthority('PERM_CONSULTER_PLANNING')")
+    List<FrequencyCheck> controle(@RequestParam(required = false) Integer annee, Authentication auth) {
+        return service.controlerMonPlanning(Acteur.depuis(auth), annee(annee));
+    }
+
+    /** Contrôle des fréquences du planning d'un collaborateur du secteur (chef secteur). */
+    @GetMapping("/plannings/{planId}/controle")
+    @PreAuthorize("hasAuthority('PERM_CONSULTER_PLANNING')")
+    List<FrequencyCheck> controleDeLEquipe(@PathVariable UUID planId, Authentication auth) {
+        return service.controlerPlanDeLEquipe(Acteur.depuis(auth), planId);
     }
 
     @PutMapping("/plannings/mon-planning/lignes")

@@ -59,6 +59,13 @@ public final class PlanningDtos {
     public record Frequency(Integer count, String period, String per, BigDecimal minAreaHa, BigDecimal maxAreaHa, String rule) {
     }
 
+    /**
+     * Résultat du contrôle des dates d'une activité face à sa fréquence. {@code expected} : séances attendues sur l'année
+     * (absent si la fréquence est « par » une unité, ou ne se calcule pas) ; {@code actual} : séances programmées.
+     */
+    public record FrequencyCheck(UUID activityId, String label, boolean ok, Integer expected, int actual, List<String> issues) {
+    }
+
     /** Activité planifiable par le profil de l'appelant (référentiel en lecture seule). */
     public record PlanActivity(UUID id, String code, String label, String category, int durationDays, boolean planned,
                                Integer monthStart, Integer monthEnd, List<Frequency> frequencies) {

@@ -15,6 +15,7 @@ import ci.sysde.common.BusinessException;
 import ci.sysde.notification.NotificationService;
 import ci.sysde.planning.PlanningDtos.AnnualPlan;
 import ci.sysde.planning.PlanningDtos.Frequency;
+import ci.sysde.planning.PlanningDtos.FrequencyCheck;
 import ci.sysde.planning.PlanningDtos.PersonRef;
 import ci.sysde.planning.PlanningDtos.PlanActivity;
 import ci.sysde.planning.PlanningDtos.PlanLine;
@@ -57,8 +58,13 @@ public class PlanningService {
     private final NotificationService notifications;
     private final PlantationsDuPlanning plantations;
 
+    /** AVERTIR : les fréquences se contrôlent à la demande, sans bloquer ; BLOQUER : une soumission non conforme est refusée (422). */
+    private final boolean bloquerSurFrequences;
+
     PlanningService(JdbcClient jdbc, PerimetreService perimetres, NotificationService notifications,
-                    PlantationsDuPlanning plantations) {
+                    PlantationsDuPlanning plantations,
+                    @org.springframework.beans.factory.annotation.Value("${sysde.planning.controle-frequences:AVERTIR}") String controleFrequences) {
+        this.bloquerSurFrequences = "BLOQUER".equalsIgnoreCase(controleFrequences);
         this.plantations = plantations;
         this.jdbc = jdbc;
         this.perimetres = perimetres;
@@ -70,6 +76,10 @@ public class PlanningService {
     /** Activités que le profil de l'appelant peut planifier, avec leurs fréquences (lecture seule). */
     @Transactional(readOnly = true)
     public List<PlanActivity> activites(Acteur acteur) {
+        return activitesDuProfil(acteur.profil());
+    }
+
+    private List<PlanActivity> activitesDuProfil(String profil) {
         Map<UUID, PlanActivity> par = new LinkedHashMap<>();
         Map<UUID, List<Frequency>> frequences = new HashMap<>();
         jdbc.sql("""
@@ -80,7 +90,7 @@ public class PlanningService {
                          where a.supprime_le is null and a.actif and a.planifiee
                          order by a.ordre, ap.superficie_min_ha nulls first
                         """)
-                .param("profil", acteur.profil())
+                .param("profil", profil)
                 .query((rs, n) -> {
                     UUID id = rs.getObject("id", UUID.class);
                     frequences.computeIfAbsent(id, k -> new ArrayList<>()).add(new Frequency(rs.getObject("nombre", Integer.class),
@@ -98,6 +108,46 @@ public class PlanningService {
                     return id;
                 }).list();
         return List.copyOf(par.values());
+    }
+
+    // ------------------------------------------------------------------ contrôle des fréquences
+
+    /** Contrôle des dates de mon planning face aux fréquences de mon profil (informatif : rien n'est bloqué). */
+    @Transactional
+    List<FrequencyCheck> controlerMonPlanning(Acteur acteur, int annee) {
+        exigerProfilPlanning(acteur);
+        return controler(obtenir(acteur.compteId(), annee), null);
+    }
+
+    /** Contrôle du planning d'un collaborateur du secteur (chef secteur). */
+    @Transactional(readOnly = true)
+    List<FrequencyCheck> controlerPlanDeLEquipe(Acteur cs, UUID planId) {
+        return controler(planDeLEquipe(cs, planId), null);
+    }
+
+    /** Une ligne de résultat par activité du profil du titulaire ; {@code seulement} restreint à une activité. */
+    private List<FrequencyCheck> controler(PlanRow plan, UUID seulement) {
+        AnnualPlan complet = construire(plan);
+        return activitesDuProfil(complet.account().profile()).stream()
+                .filter(a -> seulement == null || a.id().equals(seulement))
+                .map(a -> ControleFrequences.controler(a, complet.lines().stream().filter(l -> l.activityId().equals(a.id())).toList()))
+                .toList();
+    }
+
+    /** En mode BLOQUER, refuse (422) une soumission dont les dates ne respectent pas les fréquences. */
+    private void exigerFrequencesConformes(PlanRow plan, UUID seulement) {
+        if (!bloquerSurFrequences) {
+            return;
+        }
+        List<FrequencyCheck> ko = controler(plan, seulement).stream().filter(c -> !c.ok()).toList();
+        if (!ko.isEmpty()) {
+            FrequencyCheck premier = ko.get(0);
+            int autres = ko.stream().mapToInt(c -> c.issues().size()).sum() - 1;
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "FREQUENCES_NON_CONFORMES",
+                    "Les dates de « " + premier.label() + " » ne respectent pas la fréquence : " + premier.issues().get(0)
+                            + (autres > 0 ? " (et " + autres + " autre" + (autres > 1 ? "s" : "") + " point" + (autres > 1 ? "s" : "")
+                            + " ; voir le contrôle des fréquences)" : ""));
+        }
     }
 
     // ------------------------------------------------------------------ mon planning
@@ -137,6 +187,7 @@ public class PlanningService {
         if (lignes == 0) {
             throw invalide("Cette activité n'a aucune date dans le planning : rien à soumettre.");
         }
+        exigerFrequencesConformes(plan, activiteId);
         String actuel = jdbc.sql("select statut from planning.soumission_activite where plan_id = :p and activite_id = :a")
                 .param("p", plan.id()).param("a", activiteId).query(String.class).optional().orElse(null);
         if ("SOUMIS".equals(actuel) || "VALIDE".equals(actuel)) {
@@ -332,6 +383,7 @@ public class PlanningService {
         if (lignes == 0) {
             throw invalide("Le planning est vide : ajoutez au moins une activité avant de le soumettre.");
         }
+        exigerFrequencesConformes(plan, null);
         String profil = jdbc.sql("select profil from iam.compte where id = :id").param("id", compte).query(String.class).single().strip();
         boolean valideDOffice = "CS".equals(profil);
         if (valideDOffice) {
