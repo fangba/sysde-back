@@ -1,6 +1,6 @@
 -- Un compte par profil pour l'opérateur technique SAPH, POUR LE DÉVELOPPEMENT UNIQUEMENT.
 -- Mot de passe commun : Firca-Dev-2026 (aucun changement exigé à la première connexion).
--- Prérequis : le compte FIRCA-00001 (docker/dev-admin.sql).
+-- Prérequis : le compte FIRCA-AD-00001 (docker/dev-admin.sql).
 --
 -- Usage (depuis sysde-back) :
 --   docker exec -i docker-db-1 psql -U sysde -d sysde -v ON_ERROR_STOP=1 < docker\dev-comptes-saph.sql
@@ -22,9 +22,9 @@ DECLARE
     r           record;
     v_util      uuid;
 BEGIN
-    SELECT id INTO v_admin FROM iam.compte WHERE matricule = 'FIRCA-00001' AND statut = 'ACTIF';
+    SELECT id INTO v_admin FROM iam.compte WHERE matricule = 'FIRCA-AD-00001' AND statut = 'ACTIF';
     IF v_admin IS NULL THEN
-        RAISE EXCEPTION 'Compte FIRCA-00001 introuvable : exécutez d''abord docker/dev-admin.sql.';
+        RAISE EXCEPTION 'Compte FIRCA-AD-00001 introuvable : exécutez d''abord docker/dev-admin.sql.';
     END IF;
 
     -- 1. Administrateur : opérateur SAPH et chef de département

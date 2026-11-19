@@ -1,5 +1,6 @@
+-- Pour repartir d'une base propre avec les DEUX administrateurs (FIRCA et APROMAC), voir docker/dev-reinitialiser.sql.
 -- Premier compte administrateur FIRCA, POUR LE DÉVELOPPEMENT UNIQUEMENT.
--- Matricule : FIRCA-00001      Mot de passe : Firca-Dev-2026
+-- Matricule : FIRCA-AD-00001      Mot de passe : admin123
 -- Ne jamais exécuter ni conserver ce mot de passe en production.
 --
 -- Usage (depuis sysde-back) :
@@ -15,8 +16,8 @@ DECLARE
     v_operateur   uuid;
     v_utilisateur uuid;
 BEGIN
-    IF EXISTS (SELECT 1 FROM iam.compte WHERE matricule = 'FIRCA-00001') THEN
-        RAISE NOTICE 'Le compte FIRCA-00001 existe déjà : rien à faire.';
+    IF EXISTS (SELECT 1 FROM iam.compte WHERE matricule = 'FIRCA-AD-00001') THEN
+        RAISE NOTICE 'Le compte FIRCA-AD-00001 existe déjà : rien à faire.';
         RETURN;
     END IF;
 
@@ -27,13 +28,13 @@ BEGIN
     VALUES ('ADMIN', 'FIRCA (développement)', 'admin.dev@firca.local')
     RETURNING id INTO v_utilisateur;
 
-    -- numéro et matricule (FIRCA-00001) sont attribués par le trigger de création
+    -- numéro et matricule (FIRCA-AD-00001) sont attribués par le trigger de création
     INSERT INTO iam.compte (utilisateur_id, operateur_id, profil, statut, mot_de_passe_hash, doit_changer_mot_de_passe)
-    VALUES (v_utilisateur, v_operateur, 'AD', 'ACTIF', crypt('Firca-Dev-2026', gen_salt('bf', 12)), false);
+    VALUES (v_utilisateur, v_operateur, 'AD', 'ACTIF', crypt('admin123', gen_salt('bf', 12)), false);
 
-    RAISE NOTICE 'Compte créé : FIRCA-00001 / Firca-Dev-2026';
+    RAISE NOTICE 'Compte créé : FIRCA-AD-00001 / admin123';
 END $$;
 
 DROP EXTENSION IF EXISTS pgcrypto;
 
-SELECT matricule, reference_compte, profil, statut FROM iam.compte WHERE matricule = 'FIRCA-00001';
+SELECT matricule, reference_compte, profil, statut FROM iam.compte WHERE matricule = 'FIRCA-AD-00001';

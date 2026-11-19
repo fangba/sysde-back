@@ -8,7 +8,7 @@ Règle permanente : quand une route ou une règle change, mets à jour `docs/end
 
 ## Stack et exécution
 - Spring Boot 4.1.0, Java 25, Maven. PostgreSQL 18 + PostGIS en Docker (`docker/compose.yml`, conteneur `docker-db-1`, port **5433**, base/utilisateur/mot de passe `sysde`). Flyway seul maître du schéma (migrations `V1` à `V10` dans `src/main/resources/db/migration`), Hibernate en `validate`.
-- Comptes de développement : `docker/dev-admin.sql` (FIRCA-00001, mot de passe `Firca-Dev-2026`) puis `docker/dev-comptes-saph.sql` (un compte par profil chez SAPH).
+- Comptes de développement : `docker/dev-admin.sql` (FIRCA-AD-00001, mot de passe `admin123`) ou, pour repartir d'une base propre avec les deux administrateurs FIRCA et APROMAC, `docker/dev-reinitialiser.sql` puis `docker/dev-comptes-saph.sql` (un compte par profil chez SAPH).
 - Front Angular : `D:\projet_sysde\sysde-front`. Mobile Flutter : `D:\projet_sysde\sysde-mobile`. Ne les modifie pas sans demande.
 
 ## État du code (paquets `ci.sysde`)
