@@ -43,10 +43,11 @@ class ComptesController {
     Page<Account> lister(@RequestParam(required = false) String q, @RequestParam(required = false) String profile,
                          @RequestParam(required = false) String status, @RequestParam(required = false) UUID operatorId,
                          @RequestParam(required = false) UUID sectorId, @RequestParam(required = false) Integer lot,
-                         @RequestParam(required = false) String section,
+                         @RequestParam(required = false) String section, @RequestParam(required = false) String matricule,
+                         @RequestParam(required = false) String name,
                          @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size,
                          @RequestParam(required = false) String sort, Authentication auth) {
-        return service.lister(Acteur.depuis(auth), q, profile, status, operatorId, new ComptesService.Territoire(sectorId, lot, section), PageRequete.de(page, size), sort);
+        return service.lister(Acteur.depuis(auth), q, profile, status, operatorId, new ComptesService.Territoire(sectorId, lot, section), matricule, name, PageRequete.de(page, size), sort);
     }
 
     @GetMapping("/comptes/{id}")

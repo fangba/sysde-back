@@ -98,6 +98,13 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         creer(a.cs().client(), "Kouamé", "MO", a.operateur(), null);
         assertThat((List<?>) a.cd().client().get().uri("/comptes?q=kouame").retrieve().toEntity(OBJET).getBody().get("content")).hasSize(1);
         assertThat((List<?>) a.cd().client().get().uri("/comptes?q=KOUAMÉ").retrieve().toEntity(OBJET).getBody().get("content")).hasSize(1);
+        // filtres de colonne : nom et matricule séparément, sans casse ni accents, cumulables
+        @SuppressWarnings("unchecked") String matriculeTraore = (String) ((List<Map<String, Object>>) q.get("content")).get(0).get("matricule");
+        assertThat((List<?>) a.cd().client().get().uri("/comptes?name=KOUAMÉ").retrieve().toEntity(OBJET).getBody().get("content")).hasSize(1);
+        assertThat((List<?>) a.cd().client().get().uri("/comptes?name=traore").retrieve().toEntity(OBJET).getBody().get("content")).hasSize(1);
+        assertThat((List<?>) a.cd().client().get().uri("/comptes?matricule=" + matriculeTraore.toLowerCase()).retrieve().toEntity(OBJET).getBody().get("content")).hasSize(1);
+        assertThat((List<?>) a.cd().client().get().uri("/comptes?matricule=" + matriculeTraore + "&name=kouame").retrieve().toEntity(OBJET).getBody().get("content")).isEmpty();
+        assertThat((List<?>) a.cd().client().get().uri("/comptes?name=%25").retrieve().toEntity(OBJET).getBody().get("content")).isEmpty();
         // la recherche traite % et _ comme du texte
         assertThat((List<?>) a.cd().client().get().uri("/comptes?q=%25").retrieve().toEntity(OBJET).getBody().get("content")).isEmpty();
         assertThat(a.cd().client().get().uri("/comptes?sort=password,asc").retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);

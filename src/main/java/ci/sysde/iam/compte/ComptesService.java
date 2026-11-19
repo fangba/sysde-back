@@ -75,19 +75,28 @@ class ComptesService {
 
     /** Recherche paginée dans le périmètre de l'appelant ; {@code q} cherche dans le nom, les prénoms et le matricule. */
     @Transactional(readOnly = true)
-    Page<Account> lister(Acteur acteur, String q, String profil, String statut, UUID operateur, Territoire territoire, PageRequete page, String sort) {
+    Page<Account> lister(Acteur acteur, String q, String profil, String statut, UUID operateur, Territoire territoire, String matricule, String nom, PageRequete page, String sort) {
         PorteeComptes.Condition portee = portees.de(acteur);
         StringBuilder where = new StringBuilder(" and (").append(portee.sql()).append(")");
         Map<String, Object> params = new java.util.HashMap<>(portee.params());
         if (q != null && !q.isBlank()) {
             // Sans casse ni accents (comme la recherche du front) ; % et _ saisis sont du texte.
             where.append(" and (util.sans_accent(u.nom || ' ' || u.prenoms) like util.sans_accent(:q) or lower(c.matricule) like util.sans_accent(:q))");
-            params.put("q", "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+            params.put("q", contient(q));
         }
         if (profil != null && !profil.isBlank()) {
             // Un ou plusieurs profils, séparés par des virgules (ex. « CF,CO,MO »).
             where.append(" and c.profil in (:profils)");
             params.put("profils", java.util.Arrays.stream(profil.split(",")).map(String::strip).filter(x -> !x.isEmpty()).toList());
+        }
+        // Filtres de colonne : le matricule et le nom se cherchent séparément (contient, sans casse ni accents).
+        if (matricule != null && !matricule.isBlank()) {
+            where.append(" and util.sans_accent(c.matricule) like util.sans_accent(:matricule)");
+            params.put("matricule", contient(matricule));
+        }
+        if (nom != null && !nom.isBlank()) {
+            where.append(" and util.sans_accent(u.nom || ' ' || u.prenoms) like util.sans_accent(:nom)");
+            params.put("nom", contient(nom));
         }
         if (statut != null && !statut.isBlank()) {
             where.append(" and c.statut = :statut");
@@ -113,7 +122,7 @@ class ComptesService {
             }
             if (territoire.section() != null && !territoire.section().isBlank()) {
                 t.append(" and util.sans_accent(fs.nom) like util.sans_accent(:tsection)");
-                params.put("tsection", "%" + territoire.section().strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+                params.put("tsection", contient(territoire.section()));
             }
             where.append(t).append(")");
         }
@@ -126,6 +135,11 @@ class ComptesService {
                 .params(params).param("limite", page.size()).param("decalage", page.decalage())
                 .query(ComptesService::ligne).list();
         return Page.de(contenu, page, total);
+    }
+
+    /** Motif « contient » : % et _ saisis sont du texte. */
+    private static String contient(String texte) {
+        return "%" + texte.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
     }
 
     @Transactional(readOnly = true)
