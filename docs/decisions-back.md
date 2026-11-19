@@ -29,9 +29,9 @@ Authentification et comptes (iam), paramètres (opérateurs, contrats, secteurs,
 - Rangs : AD 1, SU/CD 2, CS 3, techniciens 4. Création et changement de profil réservés à qui détient la permission et dépasse le rang.
 
 ## Matricule et référence
-- Matricule `ACRONYME-NUMERO` (ex. SAPH-00348), numéro de 5 à 7 chiffres, unique par organisation tous profils confondus, jamais réutilisé ; fourni (matricules existants, import CSV) ou automatique. Connexion par matricule.
+- Matricule `ACRONYME-PROFIL-NUMERO` (ex. SAPH-CS-00001, **depuis le 19/11/2026**, migration V20 ; avant : `ACRONYME-NUMERO`), numéro de 5 à 7 chiffres, unique par organisation tous profils confondus, jamais réutilisé ; fourni (numéros existants, import CSV) ou automatique. Connexion par matricule. **Le profil fait partie du matricule : un changement de profil (promotion, rétrogradation) change le matricule** ; l'ancien est conservé en alias (avec le motif) et n'ouvre plus de session.
 - Correction du matricule : AD seulement, avec motif ; l'ancien est conservé (alias) et non réattribuable.
-- Référence du compte = profil + matricule (ex. MO-SAPH-00348), générée.
+- Référence du compte (`reference`) : depuis V20, identique au matricule (colonne générée, conservée pour les échanges).
 - Changement de profil (promotion/rétrogradation) : motif obligatoire, historique conservé, affectations closes ; les activités en cours restent au compte, répartition par le CS.
 
 ## Reprise de compte

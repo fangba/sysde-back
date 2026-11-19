@@ -110,10 +110,10 @@ SELECT pg_temp.ok('amorçage : premier administrateur sans acteur (numéro repri
   $$ SELECT pg_temp.compte(pg_temp.id('firca'), 'AD', 'ad_firca', '00001') $$);
 SELECT pg_temp.ok('amorçage : administrateur APROMAC',
   $$ SELECT pg_temp.compte(pg_temp.id('apromac'), 'AD', 'ad_apromac', '00001') $$);
-SELECT pg_temp.verifie('matricule = acronyme + numéro',
-  (SELECT matricule = 'FIRCA-00001' FROM iam.compte WHERE id = pg_temp.id('ad_firca')));
-SELECT pg_temp.verifie('référence du compte = profil + matricule (calculée)',
-  (SELECT reference_compte = 'AD-FIRCA-00001' FROM iam.compte WHERE id = pg_temp.id('ad_firca')));
+SELECT pg_temp.verifie('matricule = acronyme + profil + numéro',
+  (SELECT matricule = 'FIRCA-AD-00001' FROM iam.compte WHERE id = pg_temp.id('ad_firca')));
+SELECT pg_temp.verifie('référence du compte = matricule (calculée)',
+  (SELECT reference_compte = 'FIRCA-AD-00001' FROM iam.compte WHERE id = pg_temp.id('ad_firca')));
 SELECT pg_temp.verifie('le même numéro existe dans deux organisations',
   (SELECT count(DISTINCT operateur_id) = 2 FROM iam.compte WHERE numero = '00001'));
 
@@ -132,7 +132,7 @@ SELECT pg_temp.ok('AD crée un CD (SAPH), numéro attribué automatiquement',
 SELECT pg_temp.ok('AD crée un CD (SOGB)',
   $$ SELECT pg_temp.compte(pg_temp.id('sogb'), 'CD', 'cd_sogb') $$);
 SELECT pg_temp.verifie('premier numéro automatique d''un opérateur : 00001',
-  (SELECT matricule = 'SAPH-00001' FROM iam.compte WHERE id = pg_temp.id('cd_saph')));
+  (SELECT matricule = 'SAPH-CD-00001' FROM iam.compte WHERE id = pg_temp.id('cd_saph')));
 SELECT pg_temp.echec('AD ne peut pas créer un CS',
   $$ SELECT pg_temp.compte(pg_temp.id('saph'), 'CS', 'x') $$, 'hiérarchie');
 SELECT pg_temp.ok('AD crée un superviseur de son organisation',
@@ -161,12 +161,12 @@ SELECT pg_temp.ok('CD SOGB crée son CS',
   $$ SELECT pg_temp.compte(pg_temp.id('sogb'), 'CS', 'cs_sogb') $$);
 
 SELECT pg_temp.acteur('cs_saph');
-SELECT pg_temp.ok('CS crée un moniteur avec le numéro de l''opérateur (SAPH-00348)',
+SELECT pg_temp.ok('CS crée un moniteur avec le numéro de l''opérateur (00348)',
   $$ SELECT pg_temp.compte(pg_temp.id('saph'), 'MO', 'mo_saph', '00348') $$);
 SELECT pg_temp.ok('CS crée un second moniteur (même profil, deux comptes), numéro automatique',
   $$ SELECT pg_temp.compte(pg_temp.id('saph'), 'MO', 'mo2_saph') $$);
 SELECT pg_temp.verifie('le numéro automatique suit le plus grand numéro repris (00349 après 00348)',
-  (SELECT matricule = 'SAPH-00349' FROM iam.compte WHERE id = pg_temp.id('mo2_saph')));
+  (SELECT matricule = 'SAPH-MO-00349' FROM iam.compte WHERE id = pg_temp.id('mo2_saph')));
 SELECT pg_temp.ok('CS crée un contrôleur ordinaire',
   $$ SELECT pg_temp.compte(pg_temp.id('saph'), 'CO', 'co_saph') $$);
 SELECT pg_temp.ok('CS crée un formateur de saignée',
@@ -571,7 +571,7 @@ SELECT pg_temp.verifie('affectation à revoir : toujours présente et ouverte',
 -- ---------------------------------------------------------------------------
 -- 6. Vie des comptes : profil, matricule, départ et reprise, désactivation
 -- ---------------------------------------------------------------------------
--- Promotion : le profil change, le compte et le matricule restent.
+-- Promotion : le profil change, le compte reste ; le matricule suit le profil et l'ancien est gardé en alias.
 SELECT pg_temp.acteur('cd_saph');
 SELECT pg_temp.motif('');
 SELECT pg_temp.echec('changement de profil : le motif est obligatoire',
@@ -581,11 +581,13 @@ SELECT pg_temp.echec('changement de profil : impossible pour son propre compte',
   $$ UPDATE iam.compte SET profil = 'CS' WHERE id = pg_temp.id('cd_saph') $$, 'autorité');
 SELECT pg_temp.ok('promotion CO -> CS par le CD',
   $$ UPDATE iam.compte SET profil = 'CS' WHERE id = pg_temp.id('co_saph') $$);
-SELECT pg_temp.verifie('promotion : le matricule ne change pas, la référence du compte change',
-  (SELECT matricule = 'SAPH-' || numero AND reference_compte = 'CS-' || matricule
+SELECT pg_temp.verifie('promotion : le matricule prend le nouveau profil (la référence le suit)',
+  (SELECT matricule = 'SAPH-CS-' || numero AND reference_compte = matricule
      FROM iam.compte WHERE id = pg_temp.id('co_saph')));
-SELECT pg_temp.verifie('promotion : aucun alias de matricule n''est créé',
-  (SELECT count(*) = 0 FROM iam.alias_matricule WHERE compte_id = pg_temp.id('co_saph')));
+SELECT pg_temp.verifie('promotion : l''ancien matricule est gardé en alias, avec le motif du changement de profil',
+  (SELECT count(*) = 1 FROM iam.alias_matricule
+    WHERE compte_id = pg_temp.id('co_saph') AND ancien_matricule = 'SAPH-CO-' || (SELECT numero FROM iam.compte WHERE id = pg_temp.id('co_saph'))
+      AND motif = 'Changement de profil : Promotion 2026'));
 SELECT pg_temp.verifie('promotion : historique des profils (CO puis CS) avec motif',
   (SELECT string_agg(profil, ',' ORDER BY debut) = 'CO,CS' AND bool_or(motif = 'Promotion 2026')
      FROM iam.compte_profil WHERE compte_id = pg_temp.id('co_saph')));
@@ -633,16 +635,16 @@ SELECT pg_temp.ok('correction du matricule par l''administrateur',
   $$ UPDATE iam.compte SET numero = '00777' WHERE id = pg_temp.id('cs2_saph') $$);
 SELECT pg_temp.motif('');
 SELECT pg_temp.verifie('correction : matricule et référence mis à jour',
-  (SELECT matricule = 'SAPH-00777' AND reference_compte = 'CS-SAPH-00777' FROM iam.compte WHERE id = pg_temp.id('cs2_saph')));
+  (SELECT matricule = 'SAPH-CS-00777' AND reference_compte = 'SAPH-CS-00777' FROM iam.compte WHERE id = pg_temp.id('cs2_saph')));
 SELECT pg_temp.verifie('correction : l''ancien matricule est conservé en alias avec motif',
   (SELECT count(*) = 1 FROM iam.alias_matricule
-    WHERE compte_id = pg_temp.id('cs2_saph') AND ancien_matricule = 'SAPH-00003' AND motif = 'Alignement sur le système de la SAPH'));
+    WHERE compte_id = pg_temp.id('cs2_saph') AND ancien_matricule = 'SAPH-CS-00003' AND motif = 'Alignement sur le système de la SAPH'));
 SELECT pg_temp.acteur('cs_saph');
 SELECT pg_temp.echec('un ancien numéro n''est jamais attribué à un autre compte',
   $$ SELECT pg_temp.compte(pg_temp.id('saph'), 'SE', 'x', '00003') $$, 'ancien matricule');
-UPDATE iam.compte SET matricule = 'SAPH-99999' WHERE id = pg_temp.id('se_saph');
-SELECT pg_temp.verifie('un matricule modifié directement est ignoré (il est calculé à partir du numéro)',
-  (SELECT matricule <> 'SAPH-99999' AND matricule = 'SAPH-' || numero FROM iam.compte WHERE id = pg_temp.id('se_saph')));
+UPDATE iam.compte SET matricule = 'SAPH-SE-99999' WHERE id = pg_temp.id('se_saph');
+SELECT pg_temp.verifie('un matricule modifié directement est ignoré (il est calculé à partir du profil et du numéro)',
+  (SELECT matricule <> 'SAPH-SE-99999' AND matricule = 'SAPH-SE-' || numero FROM iam.compte WHERE id = pg_temp.id('se_saph')));
 
 -- Désactivation, sessions, synchronisation du mobile.
 INSERT INTO iam.jeton_rafraichissement (compte_id, famille_id, empreinte, expire_le)
@@ -821,7 +823,7 @@ SELECT pg_temp.verifie('audit : un changement de mot de passe est tracé sans sa
       AND nouvelles = '{"mot_de_passe_hash": "modifié"}'::jsonb));
 SELECT pg_temp.verifie('audit : la création d''un compte est tracée (matricule, créateur, profil du créateur)',
   (SELECT count(*) = 1 FROM audit.evenement WHERE table_nom = 'compte' AND operation = 'I'
-    AND nouvelles ->> 'matricule' = 'SAPH-00348' AND nouvelles ->> 'reference_compte' = 'MO-SAPH-00348'
+    AND nouvelles ->> 'matricule' = 'SAPH-MO-00348' AND nouvelles ->> 'reference_compte' = 'SAPH-MO-00348'
     AND acteur_compte_id = pg_temp.id('cs_saph') AND acteur_profil = 'CS'));
 SELECT pg_temp.verifie('audit : aucun hash de mot de passe dans la création d''un compte',
   (SELECT count(*) = 0 FROM audit.evenement WHERE table_nom = 'compte' AND nouvelles ? 'mot_de_passe_hash' AND nouvelles ->> 'mot_de_passe_hash' <> 'modifié'));
@@ -906,7 +908,7 @@ SELECT pg_temp.verifie('audit : la désactivation d''une organisation est tracé
 
 -- Connexions.
 SELECT pg_temp.acteur('inconnu');
-SELECT audit.tracer_connexion(pg_temp.id('mo3_saph'), 'SAPH-00350', 'SUCCES', '10.0.0.8', 'Android');
+SELECT audit.tracer_connexion(pg_temp.id('mo3_saph'), 'SAPH-MO-00350', 'SUCCES', '10.0.0.8', 'Android');
 SELECT audit.tracer_connexion(NULL, 'SAPH-99998', 'ECHEC', '10.0.0.9');
 SELECT pg_temp.verifie('audit : une connexion réussie est tracée avec compte, utilisateur et profil',
   (SELECT count(*) = 1 FROM audit.evenement
@@ -924,7 +926,7 @@ UPDATE iam.compte SET derniere_connexion = now(), echecs_connexion = 2, verrouil
 SELECT pg_temp.verifie('audit : derniere_connexion et compteur d''échecs ne produisent pas d''événement de données',
   (SELECT n FROM compteur_connexion) = (SELECT count(*) FROM audit.evenement));
 SELECT pg_temp.ok('rôle applicatif : peut tracer une connexion',
-  $$ SET LOCAL ROLE sysde_app; SELECT audit.tracer_connexion(NULL, 'SAPH-00001', 'DECONNEXION') $$);
+  $$ SET LOCAL ROLE sysde_app; SELECT audit.tracer_connexion(NULL, 'SAPH-CD-00001', 'DECONNEXION') $$);
 SELECT pg_temp.echec('rôle applicatif : ne peut pas modifier les permissions du référentiel de profils',
   $$ SET LOCAL ROLE sysde_app; INSERT INTO iam.profil (code, libelle, organisme, niveau, rang, ordre) VALUES ('ZZ', 'x', false, 'AUCUN', 9, 99) $$,
   'permission denied');

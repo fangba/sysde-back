@@ -12,9 +12,9 @@ public final class AuthDtos {
     private AuthDtos() {
     }
 
-    /** Connexion par matricule (ex. SAPH-00348). */
+    /** Connexion par matricule (ex. SAPH-CS-00001). */
     public record LoginRequest(
-            @NotBlank @Size(max = 17) String matricule,
+            @NotBlank @Size(max = 24) String matricule,
             @NotBlank @Size(max = 200) String password) {
     }
 

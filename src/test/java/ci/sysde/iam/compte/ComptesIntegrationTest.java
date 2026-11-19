@@ -25,8 +25,8 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
                 .retrieve().toEntity(OBJET);
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         @SuppressWarnings("unchecked") var compte = (Map<String, Object>) r.getBody().get("account");
-        assertThat((String) compte.get("matricule")).matches("HIE-[0-9]{5}");
-        assertThat((String) compte.get("reference")).isEqualTo("CD-" + compte.get("matricule"));
+        assertThat((String) compte.get("matricule")).matches("HIE-[A-Z]{2}-[0-9]{5}");
+        assertThat((String) compte.get("reference")).isEqualTo(compte.get("matricule"));
         assertThat(compte).containsEntry("status", "ACTIF").containsEntry("mustChangePassword", true);
         assertThat((String) r.getBody().get("temporaryPassword")).hasSize(12);
         assertThat(compte).doesNotContainKey("password").doesNotContainKey("passwordHash");
@@ -45,7 +45,7 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         Chaine c = chaine("NUM");
         // un CS crée un moniteur avec son numéro historique
         Session mo = creer(c.cs().client(), "Moniteur", "MO", c.operateur(), "00348");
-        assertThat(mo.matricule()).isEqualTo("NUM-00348");
+        assertThat(mo.matricule()).isEqualTo("NUM-MO-00348");
         // numéro déjà pris : refusé
         var doublon = c.cs().client().post().uri("/comptes").contentType(MediaType.APPLICATION_JSON)
                 .body(corps("Autre", "CO", c.operateur(), "00348")).retrieve().toEntity(OBJET);
@@ -277,8 +277,11 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         var promu = c.cs().client().put().uri("/comptes/" + co.id() + "/profil").contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("profile", "CF", "reason", "Promotion au contrôle de saignée")).retrieve().toEntity(OBJET);
         assertThat(promu.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(promu.getBody()).containsEntry("profile", "CF").containsEntry("reference", "CF-PRF-00500")
-                .containsEntry("matricule", "PRF-00500");                       // le matricule ne bouge pas (PRO-05)
+        assertThat(promu.getBody()).containsEntry("profile", "CF").containsEntry("reference", "PRF-CF-00500")
+                .containsEntry("matricule", "PRF-CF-00500");                    // le profil fait partie du matricule : il change avec lui
+        assertThat(jdbc.sql("select ancien_matricule from iam.alias_matricule where compte_id = :id").param("id", co.id())
+                .query(String.class).list()).containsExactly("PRF-CO-00500");   // l'ancien est gardé en alias
+        assertThat(connexion("PRF-CO-00500", co.motDePasse())).isEqualTo(HttpStatus.UNAUTHORIZED);   // et n'ouvre plus de session
         assertThat(jdbc.sql("select count(*) from iam.compte_profil where compte_id = :id").param("id", co.id()).query(Long.class).single())
                 .isEqualTo(2);                                                  // l'historique est conservé
         // le nouveau profil s'applique dès la requête suivante (relu côté serveur)
@@ -297,13 +300,17 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         var corrige = admin().put().uri("/comptes/" + co.id() + "/matricule").contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("number", "00501", "reason", "Erreur de saisie")).retrieve().toEntity(OBJET);
         assertThat(corrige.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(corrige.getBody()).containsEntry("matricule", "PRF-00501");
+        assertThat(corrige.getBody()).containsEntry("matricule", "PRF-CF-00501");
         assertThat(jdbc.sql("select ancien_matricule from iam.alias_matricule where compte_id = :id").param("id", co.id())
-                .query(String.class).single()).isEqualTo("PRF-00500");
-        assertThat(RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, p) -> { }).build()
+                .query(String.class).list()).containsExactlyInAnyOrder("PRF-CO-00500", "PRF-CF-00500");
+        assertThat(connexion("PRF-CF-00500", co.motDePasse())).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    /** Statut HTTP d'une tentative de connexion (sans lever d'exception). */
+    private HttpStatus connexion(String matricule, String motDePasse) {
+        return (HttpStatus) RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, p) -> { }).build()
                 .post().uri("/auth/login").contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("matricule", "PRF-00500", "password", co.motDePasse())).retrieve().toBodilessEntity().getStatusCode())
-                .isEqualTo(HttpStatus.UNAUTHORIZED);
+                .body(Map.of("matricule", matricule, "password", motDePasse)).retrieve().toBodilessEntity().getStatusCode();
     }
 
     // ------------------------------------------------------------------ affectations et reprise
@@ -488,12 +495,12 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         @SuppressWarnings("unchecked") var crees = (List<Map<String, Object>>) resultat.getBody().get("accounts");
         assertThat(crees).extracting(x -> x.get("line")).containsExactlyInAnyOrder(2, 3, 11);
         var aka = crees.stream().filter(x -> "Aka".equals(x.get("lastName"))).findFirst().orElseThrow();
-        assertThat(aka).containsEntry("matricule", "IMP-00700").containsEntry("reference", "MO-IMP-00700");
+        assertThat(aka).containsEntry("matricule", "IMP-MO-00700").containsEntry("reference", "IMP-MO-00700");
         @SuppressWarnings("unchecked") var erreursFinales = (List<Map<String, Object>>) resultat.getBody().get("errors");
         assertThat(erreursFinales).anyMatch(x -> Integer.valueOf(4).equals(x.get("line")) && ((String) x.get("message")).contains("un seul moniteur"));
 
         // le mot de passe temporaire fonctionne ; le compte est affecté à sa section
-        Session ouverte = ouvrir(UUID.fromString((String) aka.get("accountId")), "IMP-00700", (String) aka.get("temporaryPassword"));
+        Session ouverte = ouvrir(UUID.fromString((String) aka.get("accountId")), "IMP-MO-00700", (String) aka.get("temporaryPassword"));
         assertThat(ouverte.client().get().uri("/auth/moi").retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.OK);
         var aff = cs.get().uri("/comptes/" + aka.get("accountId") + "/affectations").retrieve().toEntity(LISTE).getBody();
         assertThat(aff).hasSize(1);

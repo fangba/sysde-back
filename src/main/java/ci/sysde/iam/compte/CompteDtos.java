@@ -16,7 +16,7 @@ public final class CompteDtos {
     private CompteDtos() {
     }
 
-    /** {@code status} : EN_ATTENTE, ACTIF ou DESACTIVE. {@code reference} : profil + matricule (ex. MO-SAPH-00348). */
+    /** {@code status} : EN_ATTENTE, ACTIF ou DESACTIVE. {@code reference} : identique au matricule (ex. SAPH-MO-00348), conservée pour les échanges. */
     public record Account(UUID id, UUID userId, String matricule, String reference, String number, String profile,
                           String profileLabel, UUID operatorId, String operatorAcronym, String lastName, String firstName,
                           String email, String phone, String status, boolean mustChangePassword,
