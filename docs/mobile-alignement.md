@@ -1,4 +1,4 @@
-# Alignement mobile ↔ back (lecture du 18/11/2026)
+# Alignement mobile ↔ back (lecture du 18/11/2026, mis à jour le 19/11/2026 : format du matricule)
 
 Lecture seule : rien n'a été modifié dans `sysde-mobile`. Sources : `MOBILE-CONTEXTE.md`, le code Flutter (`lib/`, 88 fichiers, lu pour les couches données et domaine, la file d'envoi, la base locale, les écrans de synchronisation et de mise à jour du planning) et le back tel qu'il est (`/mobile/amorcage`, `/realisations`, `/participants`, `/auth/*`).
 Ce document remplace les §4 et §5 de `MOBILE-CONTEXTE.md`, périmés depuis l'API mobile du 15/11 et le jeton à 15 min du 18/11. Légende : **[écart]** le mobile et le back ne se correspondent pas · **[décision]** à trancher par Franck / le client · **[à vérifier]** non lu ou non testé.
@@ -77,6 +77,17 @@ Le mobile a un champ `anomaly` (hors secteur, durée courte, doublon, sans posit
 - **Au bout de 30 jours sans réseau** : jeton de rafraîchissement expiré, reconnexion avec le mot de passe avant d'envoyer ; les données locales restent. **[décision]** durée adaptée aux tournées longues ?
 - **Mot de passe temporaire** : `mustChangePassword` renvoie vers `POST /auth/mot-de-passe` avant tout (403 `MOT_DE_PASSE_TEMPORAIRE` ailleurs).
 - **Compte désactivé** : 403 hors envoi ; l'application ne tente alors que l'envoi (30 jours) ; 401 `SESSION_EXPIREE` ensuite.
+
+### Changement du matricule (19/11/2026) : ce que le mobile doit prendre en compte
+
+Le matricule est désormais **`ACRONYME-PROFIL-NUMÉRO`** (ex. `SAPH-CS-00001`, migration V20) au lieu de `ACRONYME-NUMÉRO` (`SAPH-00348`).
+
+- **Connexion** : l'agent saisit le nouveau matricule. **Les anciens matricules n'ouvrent plus de session** (401), y compris pour les comptes existants : la migration les a tous convertis et gardés en alias. Le formulaire de connexion (`login_page.dart`) est pré-rempli avec `SAPH-00348` en démonstration : à remplacer par un exemple au nouveau format, ou par un champ vide.
+- **Contrôle côté appareil** (s'il y en a un) : `^[A-Z0-9]+-[A-Z]{2}-[0-9]{5,7}$`, sans casse (le serveur met en majuscules). Le serveur reste juge ; ne pas bloquer un format que le back accepterait.
+- **Affichage** : `UserProfile.matricule` (commentaire « ACRONYME-NUMERO » de `user_profile.dart`) et les données de démonstration (`demo_data.dart`, `profile.dart`) sont à mettre au nouveau format.
+- **`reference`** : le champ renvoyé par le back est maintenant **identique au matricule** (il valait `PROFIL-ACRONYME-NUMÉRO`). Le mobile ne doit plus s'en servir comme d'une seconde identité.
+- **Un changement de profil change le matricule.** Après une promotion ou une rétrogradation, `SAPH-CO-00500` devient `SAPH-CF-00500` (même numéro). Le compte, ses jetons de session et son identifiant (`accountId`) **ne changent pas** : l'appareil reste connecté. En revanche le matricule gardé en local (profil affiché, réglages) est périmé : le mettre à jour depuis `user.matricule` de `/auth/refresh` ou de `/auth/moi`. Les affectations du compte sont closes par le serveur à ce moment (voir §7 pour le rechargement du planning) : le technicien doit refaire une mise à jour de son planning.
+- **Hors ligne** : sans réseau, l'appareil continue d'afficher le matricule enregistré ; il ne se corrige qu'au prochain contact avec le serveur.
 
 ## 6. Copie locale du programme (parcours 1, suite)
 
