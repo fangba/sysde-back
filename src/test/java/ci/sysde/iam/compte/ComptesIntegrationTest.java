@@ -3,6 +3,7 @@ package ci.sysde.iam.compte;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,6 +51,25 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         var doublon = c.cs().client().post().uri("/comptes").contentType(MediaType.APPLICATION_JSON)
                 .body(corps("Autre", "CO", c.operateur(), "00348")).retrieve().toEntity(OBJET);
         assertThat(doublon.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        // le matricule est contrôlé en entier : acronyme de l'opérateur, profil du compte, numéro
+        BiFunction<String, String, org.springframework.http.ResponseEntity<Map<String, Object>>> avecMatricule = (nom, matricule) -> {
+            var corps = corps(nom, "MO", c.operateur(), null);
+            corps.put("matricule", matricule);
+            return c.cs().client().post().uri("/comptes").contentType(MediaType.APPLICATION_JSON).body(corps).retrieve().toEntity(OBJET);
+        };
+        var acronymeFaux = avecMatricule.apply("AcrFaux", "XXX-MO-00601");
+        assertThat(acronymeFaux.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) acronymeFaux.getBody().get("message")).contains("opérateur (NUM)");
+        var profilFaux = avecMatricule.apply("PrfFaux", "NUM-CO-00601");
+        assertThat(profilFaux.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) profilFaux.getBody().get("message")).contains("compte (MO)");
+        var sansForme = avecMatricule.apply("SansForme", "00601");
+        assertThat(sansForme.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) sansForme.getBody().get("message")).contains("ACRONYME-PROFIL-NUMÉRO");
+        var complet = avecMatricule.apply("Complet", "num-mo-00601");   // sans tenir compte de la casse
+        assertThat(complet.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        @SuppressWarnings("unchecked") var crée = (Map<String, Object>) complet.getBody().get("account");
+        assertThat(crée).containsEntry("matricule", "NUM-MO-00601");
         // un CS ne crée pas un CS, un CD ne crée pas un MO : la base refuse (hiérarchie)
         var cs = c.cs().client().post().uri("/comptes").contentType(MediaType.APPLICATION_JSON)
                 .body(corps("Intrus", "CS", c.operateur(), null)).retrieve().toEntity(OBJET);
@@ -299,8 +319,15 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         assertThat(c.cs().client().put().uri("/comptes/" + co.id() + "/matricule").contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("number", "00501", "reason", "Erreur de saisie")).retrieve().toBodilessEntity().getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+        // un matricule complet est contrôlé en entier (acronyme, profil), pas seulement son numéro
+        assertThat(admin().put().uri("/comptes/" + co.id() + "/matricule").contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("matricule", "PRF-CO-00501", "reason", "Erreur de saisie")).retrieve().toBodilessEntity().getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);                                                  // le compte est CF, pas CO
+        assertThat(admin().put().uri("/comptes/" + co.id() + "/matricule").contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("reason", "Erreur de saisie")).retrieve().toBodilessEntity().getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);                                                  // ni numéro ni matricule
         var corrige = admin().put().uri("/comptes/" + co.id() + "/matricule").contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("number", "00501", "reason", "Erreur de saisie")).retrieve().toEntity(OBJET);
+                .body(Map.of("matricule", "PRF-CF-00501", "reason", "Erreur de saisie")).retrieve().toEntity(OBJET);
         assertThat(corrige.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(corrige.getBody()).containsEntry("matricule", "PRF-CF-00501");
         assertThat(jdbc.sql("select ancien_matricule from iam.alias_matricule where compte_id = :id").param("id", co.id())

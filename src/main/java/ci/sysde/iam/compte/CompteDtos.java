@@ -27,7 +27,11 @@ public final class CompteDtos {
     public record AccountWithPassword(Account account, String temporaryPassword) {
     }
 
-    /** {@code number} : numéro de matricule historique (5 à 7 chiffres) ; absent, le système en attribue un. */
+    /**
+     * {@code matricule} : matricule complet souhaité (ACRONYME-PROFIL-NUMÉRO) ; le serveur le contrôle en entier (acronyme de
+     * l'opérateur, profil du compte, numéro). {@code number} : seulement le numéro (5 à 7 chiffres). Les deux absents : le
+     * système attribue le numéro ; les deux présents : ils doivent concorder.
+     */
     public record AccountInput(
             @NotBlank @Size(max = 100) String lastName,
             @NotBlank @Size(max = 150) String firstName,
@@ -35,7 +39,8 @@ public final class CompteDtos {
             @Size(max = 30) String phone,
             @NotNull UUID operatorId,
             @NotNull @Pattern(regexp = "[A-Z]{2}") String profile,
-            @Pattern(regexp = "[0-9]{5,7}", message = "5 à 7 chiffres") String number) {
+            @Pattern(regexp = "[0-9]{5,7}", message = "5 à 7 chiffres") String number,
+            @Size(max = 24) String matricule) {
     }
 
     public record PersonInput(
@@ -54,8 +59,10 @@ public final class CompteDtos {
             @NotBlank @Size(max = 500) String reason) {
     }
 
+    /** Le nouveau matricule, en entier ({@code matricule}) ou par son seul numéro ({@code number}) : l'un des deux est obligatoire. */
     public record MatriculeCorrection(
-            @NotNull @Pattern(regexp = "[0-9]{5,7}", message = "5 à 7 chiffres") String number,
+            @Pattern(regexp = "[0-9]{5,7}", message = "5 à 7 chiffres") String number,
+            @Size(max = 24) String matricule,
             @NotBlank @Size(max = 500) String reason) {
     }
 

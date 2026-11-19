@@ -160,6 +160,7 @@ class ComptesService {
                 .param("o", in.operatorId()).query(Boolean.class).single()) {
             throw invalide("Opérateur inconnu ou inactif.");
         }
+        String numero = numeroDuMatricule(in.matricule(), in.number(), acronymeDe(in.operatorId()), in.profile());
         verifierEmailLibre(acteur, in.email(), null);
         UUID utilisateur = jdbc.sql("insert into iam.utilisateur (nom, prenoms, email, telephone) values (:n, :p, :e, :t) returning id")
                 .param("n", in.lastName().strip()).param("p", in.firstName().strip())
@@ -172,7 +173,7 @@ class ComptesService {
                         values (:u, :o, :p, :numero, 'ACTIF', :hash, true)
                         returning id
                         """)
-                .param("u", utilisateur).param("o", in.operatorId()).param("p", in.profile()).param("numero", in.number())
+                .param("u", utilisateur).param("o", in.operatorId()).param("p", in.profile()).param("numero", numero)
                 .param("hash", encodeur.encode(motDePasse))
                 .query(UUID.class).single();
         return new AccountWithPassword(lireSansPerimetre(id), motDePasse);
@@ -265,10 +266,17 @@ class ComptesService {
         return lireSansPerimetre(id);
     }
 
-    /** Correction du numéro (COM-03) : administrateur seulement (règle de la base), l'ancien matricule est conservé en alias. */
+    /**
+     * Correction du matricule (COM-03) : administrateur seulement (règle de la base), l'ancien matricule est conservé en alias.
+     * Le nouveau matricule est donné en entier ou par son seul numéro ; en entier, il est contrôlé en entier.
+     */
     @Transactional
-    Account corrigerMatricule(UUID id, String numero, String motif) {
+    Account corrigerMatricule(UUID id, String number, String matricule, String motif) {
         Account compte = lireSansPerimetre(id);
+        String numero = numeroDuMatricule(matricule, number, compte.operatorAcronym(), compte.profile());
+        if (numero == null) {
+            throw invalide("Indiquez le nouveau matricule.");
+        }
         if (compte.number().equals(numero)) {
             throw conflit("Le compte a déjà ce numéro.");
         }
@@ -279,6 +287,38 @@ class ComptesService {
     }
 
     // ------------------------------------------------------------------ utilitaires
+
+    private String acronymeDe(UUID operateur) {
+        return jdbc.sql("select acronyme from referentiel.operateur where id = :o and supprime_le is null")
+                .param("o", operateur).query(String.class).optional().orElse(null);
+    }
+
+    /**
+     * Numéro à retenir pour un matricule demandé. Un matricule complet ({@code ACRONYME-PROFIL-NUMÉRO}) est contrôlé en entier :
+     * l'acronyme doit être celui de l'opérateur et le profil celui du compte, pas seulement le numéro. Rend {@code null} si
+     * rien n'est demandé (le système attribue alors le numéro).
+     */
+    private static String numeroDuMatricule(String matricule, String numero, String acronyme, String profil) {
+        String retenu = numero;
+        if (matricule != null && !matricule.isBlank()) {
+            String m = matricule.strip().toUpperCase(java.util.Locale.ROOT);
+            java.util.regex.Matcher t = java.util.regex.Pattern.compile("^([A-Z0-9]+)-([A-Z]{2})-([0-9]{5,7})$").matcher(m);
+            if (!t.matches()) {
+                throw invalide("Le matricule doit suivre le format ACRONYME-PROFIL-NUMÉRO (numéro de 5 à 7 chiffres).");
+            }
+            if (acronyme != null && !t.group(1).equals(acronyme)) {
+                throw invalide("L'acronyme du matricule doit être celui de l'opérateur (" + acronyme + ").");
+            }
+            if (!t.group(2).equals(profil)) {
+                throw invalide("Le profil du matricule doit être celui du compte (" + profil + ").");
+            }
+            if (numero != null && !numero.equals(t.group(3))) {
+                throw invalide("Le numéro du matricule ne correspond pas au numéro indiqué.");
+            }
+            retenu = t.group(3);
+        }
+        return retenu;
+    }
 
     private Account lireSansPerimetre(UUID id) {
         return jdbc.sql(SELECT + " and c.id = :id").param("id", id).query(ComptesService::ligne).optional()

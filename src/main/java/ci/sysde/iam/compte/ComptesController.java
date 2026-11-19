@@ -96,6 +96,6 @@ class ComptesController {
     @PutMapping("/comptes/{id}/matricule")
     @PreAuthorize("hasAuthority('PERM_GERER_COMPTE')")
     Account corrigerMatricule(@PathVariable UUID id, @Valid @RequestBody MatriculeCorrection in) {
-        return service.corrigerMatricule(id, in.number(), in.reason());
+        return service.corrigerMatricule(id, in.number(), in.matricule(), in.reason());
     }
 }
