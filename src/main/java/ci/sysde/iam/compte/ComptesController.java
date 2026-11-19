@@ -59,8 +59,8 @@ class ComptesController {
     @PostMapping("/comptes")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAuthority('PERM_CREER_COMPTE')")
-    AccountWithPassword creer(@Valid @RequestBody AccountInput in) {
-        return service.creer(in);
+    AccountWithPassword creer(@Valid @RequestBody AccountInput in, Authentication auth) {
+        return service.creer(Acteur.depuis(auth), in);
     }
 
     @PutMapping("/comptes/{id}")

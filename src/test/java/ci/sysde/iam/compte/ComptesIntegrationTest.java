@@ -67,7 +67,7 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         var memeMail = c.cs().client().post().uri("/comptes").contentType(MediaType.APPLICATION_JSON)
                 .body(corps("Moniteur", "CO", c.operateur(), null)).retrieve().toEntity(OBJET);
         assertThat(memeMail.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat((String) memeMail.getBody().get("message")).contains("e-mail");
+        assertThat((String) memeMail.getBody().get("message")).contains("compte " + mo.matricule());   // désigné par son matricule
     }
 
     @Test
@@ -140,9 +140,11 @@ class ComptesIntegrationTest extends AbstractIntegrationTest {
         assertThat(a.cs().client().put().uri("/comptes/" + a.cd().id()).contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("lastName", "Piraté", "firstName", "X")).retrieve().toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         // e-mail pris par quelqu'un d'autre
-        assertThat(a.cs().client().put().uri("/comptes/" + co.id()).contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("lastName", "Yao", "firstName", "Marie", "email", "cs" + "mpa@test.local")).retrieve().toBodilessEntity().getStatusCode())
-                .isEqualTo(HttpStatus.CONFLICT);
+        var mailPris = a.cs().client().put().uri("/comptes/" + co.id()).contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("lastName", "Yao", "firstName", "Marie", "email", "cs" + "mpa@test.local")).retrieve().toEntity(OBJET);
+        assertThat(mailPris.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        // ce compte (son propre chef) est hors de la portée du demandeur : son matricule n'est pas révélé
+        assertThat((String) mailPris.getBody().get("message")).contains("une autre personne").doesNotContain("-CS-");
     }
 
     @Test

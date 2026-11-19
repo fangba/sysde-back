@@ -152,7 +152,7 @@ class ComptesService {
     // ------------------------------------------------------------------ création et modification
 
     @Transactional
-    AccountWithPassword creer(AccountInput in) {
+    AccountWithPassword creer(Acteur acteur, AccountInput in) {
         if (!jdbc.sql("select exists (select 1 from iam.profil where code = :p)").param("p", in.profile()).query(Boolean.class).single()) {
             throw invalide("Profil inconnu : " + in.profile() + ".");
         }
@@ -160,7 +160,7 @@ class ComptesService {
                 .param("o", in.operatorId()).query(Boolean.class).single()) {
             throw invalide("Opérateur inconnu ou inactif.");
         }
-        verifierEmailLibre(in.email(), null);
+        verifierEmailLibre(acteur, in.email(), null);
         UUID utilisateur = jdbc.sql("insert into iam.utilisateur (nom, prenoms, email, telephone) values (:n, :p, :e, :t) returning id")
                 .param("n", in.lastName().strip()).param("p", in.firstName().strip())
                 .param("e", vide(in.email())).param("t", vide(in.phone()))
@@ -183,7 +183,7 @@ class ComptesService {
     Account modifierPersonne(Acteur acteur, UUID id, PersonInput in) {
         Account compte = lireSansPerimetre(id);
         exigerAutorite(acteur, id, compte.profile());
-        verifierEmailLibre(in.email(), compte.userId());
+        verifierEmailLibre(acteur, in.email(), compte.userId());
         jdbc.sql("update iam.utilisateur set nom = :n, prenoms = :p, email = :e, telephone = :t where id = :u")
                 .param("u", compte.userId()).param("n", in.lastName().strip()).param("p", in.firstName().strip())
                 .param("e", vide(in.email())).param("t", vide(in.phone())).update();
@@ -306,7 +306,12 @@ class ComptesService {
         }
     }
 
-    private void verifierEmailLibre(String email, UUID sauf) {
+    /**
+     * Un e-mail appartient à une seule personne. Le refus désigne le compte qui l'utilise par son matricule, à condition que
+     * l'appelant ait le droit de le voir (même périmètre que la liste des comptes) : sinon, rien ne révèle l'identifiant d'un
+     * compte hors de sa portée.
+     */
+    private void verifierEmailLibre(Acteur acteur, String email, UUID sauf) {
         if (email == null || email.isBlank()) {
             return;
         }
@@ -315,9 +320,27 @@ class ComptesService {
                                           and (cast(:sauf as uuid) is null or id <> :sauf))
                         """)
                 .param("e", email.strip()).param("sauf", sauf).query(Boolean.class).single();
-        if (pris) {
-            throw conflit("Cet e-mail est déjà utilisé par une autre personne.");
+        if (!pris) {
+            return;
         }
+        PorteeComptes.Condition portee = portees.de(acteur);
+        String matricule = jdbc.sql("""
+                        select c.matricule
+                          from iam.compte c
+                          join iam.utilisateur u on u.id = c.utilisateur_id
+                          join iam.profil p on p.code = c.profil
+                          join referentiel.operateur o on o.id = c.operateur_id
+                         where lower(u.email) = lower(:e) and u.supprime_le is null and c.supprime_le is null
+                           and (cast(:sauf as uuid) is null or u.id <> :sauf)
+                           and (%s)
+                         order by c.cree_le, c.id
+                         limit 1
+                        """.formatted(portee.sql()))
+                .params(portee.params()).param("e", email.strip()).param("sauf", sauf)
+                .query(String.class).optional().orElse(null);
+        throw conflit(matricule != null
+                ? "Cette adresse est déjà utilisée par le compte " + matricule + "."
+                : "Cette adresse est déjà utilisée par une autre personne.");
     }
 
     private static String vide(String texte) {
